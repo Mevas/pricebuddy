@@ -13,6 +13,7 @@ use App\Filament\Actions\Notifications\TestGotifyAction;
 use App\Filament\Actions\Notifications\TestTelegramAction;
 use App\Filament\Traits\FormHelperTrait;
 use App\Jobs\RegeneratePriceCache;
+use App\Jobs\UpdateExchangeRates;
 use App\Models\UrlResearch;
 use App\Rules\ValidCron;
 use App\Services\AiService;
@@ -80,8 +81,10 @@ class AppSettingsPage extends SettingsPage
         Cache::flush();
         Once::flush();
 
-        // Cached product prices are converted into the app currency.
+        // Cached product prices are converted into the app currency, and stores may now be
+        // in a currency whose rates have not been fetched yet.
         if (self::defaultCurrency() !== $previousCurrency) {
+            UpdateExchangeRates::dispatch();
             RegeneratePriceCache::dispatch();
         }
     }

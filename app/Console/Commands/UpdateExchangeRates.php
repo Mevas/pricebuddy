@@ -6,7 +6,6 @@ use App\Jobs\RegeneratePriceCache;
 use App\Models\Store;
 use App\Models\Url;
 use App\Services\ExchangeRateService;
-use App\Services\Helpers\CurrencyHelper;
 use Illuminate\Console\Command;
 
 class UpdateExchangeRates extends Command
@@ -29,7 +28,7 @@ class UpdateExchangeRates extends Command
     public function handle(ExchangeRateService $exchangeRates)
     {
         $foreignStoreIds = Store::all()
-            ->filter(fn (Store $store): bool => strcasecmp($store->currency, CurrencyHelper::getCurrency()) !== 0)
+            ->reject(fn (Store $store): bool => $store->usesAppCurrency())
             ->modelKeys();
 
         // Nothing is converted, so there is no need to contact the rates endpoint.

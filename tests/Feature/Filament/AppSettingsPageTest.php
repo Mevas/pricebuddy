@@ -4,6 +4,7 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\AppSettingsPage;
 use App\Jobs\RegeneratePriceCache;
+use App\Jobs\UpdateExchangeRates;
 use App\Models\User;
 use App\Services\Helpers\SettingsHelper;
 use App\Settings\AppSettings;
@@ -94,7 +95,7 @@ class AppSettingsPageTest extends TestCase
             ->assertHasNoFormErrors(['scrape_retry_max_attempts', 'scrape_retry_delay_minutes']);
     }
 
-    public function test_changing_the_default_currency_regenerates_price_caches(): void
+    public function test_changing_the_default_currency_updates_rates_and_price_caches(): void
     {
         Queue::fake();
         SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'USD']);
@@ -104,7 +105,8 @@ class AppSettingsPageTest extends TestCase
             ->call('save')
             ->assertHasNoFormErrors();
 
-        Queue::assertPushed(RegeneratePriceCache::class);
+        Queue::assertPushed(UpdateExchangeRates::class);
+        Queue::assertPushed(RegeneratePriceCache::class, fn (RegeneratePriceCache $job) => $job->productIds === null);
     }
 
     public function test_saving_without_a_currency_change_keeps_price_caches(): void
@@ -117,6 +119,7 @@ class AppSettingsPageTest extends TestCase
             ->call('save')
             ->assertHasNoFormErrors();
 
+        Queue::assertNotPushed(UpdateExchangeRates::class);
         Queue::assertNotPushed(RegeneratePriceCache::class);
     }
 

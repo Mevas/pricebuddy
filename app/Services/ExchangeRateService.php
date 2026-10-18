@@ -11,8 +11,9 @@ use Throwable;
 /**
  * Converts store currencies into the app currency, so prices from stores that use
  * different currencies can be compared. Rates come from a Frankfurter-compatible
- * endpoint (ECB reference rates by default), are stored in the exchange_rates table
- * by buddy:update-exchange-rates, and are only read here otherwise.
+ * endpoint (ECB reference rates by default) and are stored in the exchange_rates table
+ * by refresh(), which runs through buddy:update-exchange-rates. Everything else only
+ * reads them.
  *
  * Bound as a scoped singleton, so the stored rates are read once per request or job.
  */

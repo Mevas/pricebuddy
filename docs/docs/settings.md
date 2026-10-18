@@ -52,9 +52,10 @@ currency, PriceBuddy checks for new rates every hour and stores them; when they
 change, the prices of products sold in another currency are recalculated, price
 history included. If a check fails, the stored rates are kept. If there is no
 rate for a currency (it is not covered, or rates have not been fetched yet), that
-store's prices are left in its own currency and are not converted. To fetch
-rates straight away, for example right after setting up the first store in
-another currency, run `php artisan buddy:update-exchange-rates`.
+store's prices are left in its own currency and are not converted. Rates are
+also fetched straight away when a store is added in, or changed to, another
+currency, and when the default currency changes. To fetch them by hand, run
+`php artisan buddy:update-exchange-rates`.
 
 Set the `EXCHANGE_RATES_URL` environment variable to use another
 Frankfurter-compatible endpoint, or to an empty value to turn conversion off.

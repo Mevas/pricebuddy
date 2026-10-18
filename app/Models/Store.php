@@ -7,6 +7,7 @@ use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
 use App\Jobs\RegeneratePriceCache;
+use App\Jobs\UpdateExchangeRates;
 use App\Services\ExchangeRateService;
 use App\Services\Helpers\CurrencyHelper;
 use Database\Factories\StoreFactory;
@@ -92,10 +93,21 @@ class Store extends Model
             });
         });
 
+        // A store in another currency may need rates that have not been fetched yet.
+        static::created(function (Store $store) {
+            if (! $store->usesAppCurrency()) {
+                UpdateExchangeRates::dispatch();
+            }
+        });
+
         static::updated(function (Store $store) {
             // Cached product prices are converted from the store currency, so they are
             // stale as soon as it changes.
             if ($store->currencyWasChanged()) {
+                if (! $store->usesAppCurrency()) {
+                    UpdateExchangeRates::dispatch();
+                }
+
                 RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
             }
         });
@@ -279,6 +291,11 @@ class Store extends Model
     /***************************************************
      * Helpers.
      **************************************************/
+
+    public function usesAppCurrency(): bool
+    {
+        return strcasecmp($this->currency, CurrencyHelper::getCurrency()) === 0;
+    }
 
     protected function currencyWasChanged(): bool
     {
