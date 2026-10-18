@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Console\Commands\RegeneratePriceCache as RegeneratePriceCacheCommand;
+use App\Services\PriceFetcherService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -13,8 +14,11 @@ class RegeneratePriceCache implements ShouldQueue
     use Dispatchable;
     use Queueable;
 
+    public $timeout = PriceFetcherService::JOB_TIMEOUT;
+
     /**
-     * Retried, because nothing queues a rebuild again after the rates or a currency change.
+     * Retried, because nothing queues this bulk rebuild again after the rates or a currency
+     * change: until a product is next scraped, its cache would keep the old rates.
      */
     public int $tries = 3;
 

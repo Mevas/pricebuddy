@@ -10,6 +10,7 @@
         "ext-intl": "*",
         "archilex/filament-toggle-icon-column": "^3.1",
         "awcodes/filament-quick-create": "^3.6",
+        "brick/math": "^0.11|^0.12|^0.13|^0.14",
         "calebporzio/sushi": "^2.5",
         "fakerphp/faker": "^1.23",
         "filament/actions": "^3.2",
