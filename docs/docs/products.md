@@ -36,8 +36,9 @@ PriceBuddy will then show:
 * The unit price as the main comparison
 * The normal retail price underneath
 
-Price trends, the **Current price is lowest in** filter and the dashboard compare
-unit prices, so different pack sizes compare with each other.
+Price trends, the **Current price is lowest in** filter, the dashboard's summary
+stats and **Recently dropped** compare unit prices, so different pack sizes compare
+with each other.
 
 ## Check frequency &amp; pausing
 
