@@ -137,9 +137,10 @@ class ProductTest extends TestCase
 
     public function test_a_unit_price_below_a_ten_thousandth_is_stored_exactly()
     {
-        $product = $this->createOneProductWithUrlAndPrices(prices: [1.99, 1.99], priceFactor: 100000);
+        // 6.663333333333333e-5 is written in exponent form and needs all 17 digits.
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.99, 19.99], priceFactor: 300000);
 
-        $this->assertSame(1.99 / 100000, $product->refresh()->current_price);
+        $this->assertSame(19.99 / 300000, $product->refresh()->current_price);
         $this->assertFalse(Product::lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
