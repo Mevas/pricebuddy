@@ -4,6 +4,7 @@ namespace Tests\Feature\Models;
 
 use App\Console\Commands\UpdateExchangeRates;
 use App\Dto\PriceCacheDto;
+use App\Jobs\UpdateExchangeRates as UpdateExchangeRatesJob;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Url;
@@ -12,8 +13,10 @@ use App\Notifications\PriceAlertNotification;
 use App\Services\ExchangeRateService;
 use App\Services\Helpers\SettingsHelper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -209,6 +212,30 @@ class ProductCurrencyConversionTest extends TestCase
 
         $this->assertSame('RON', $store->refresh()->currency);
         $this->assertSame(10.0, (float) $product->current_price);
+    }
+
+    public function test_switching_a_store_to_another_currency_fetches_rates_straight_away(): void
+    {
+        DB::table('exchange_rates')->delete();
+        $this->app->forgetScopedInstances();
+        $product = $this->makeProduct(ronPrices: [149], eurPrices: []);
+
+        $store = Store::query()->where('name', 'ron-store.test')->firstOrFail();
+        $store->update(['settings' => ['locale_settings' => ['locale' => 'en', 'currency' => 'EUR']]]);
+
+        $this->assertEqualsWithDelta(745.0, $product->refresh()->current_price, 0.001);
+    }
+
+    public function test_creating_a_store_in_another_currency_queues_a_rates_update(): void
+    {
+        Queue::fake();
+
+        $this->makeStore('usd-store.test', 'USD');
+        Queue::assertPushed(UpdateExchangeRatesJob::class);
+
+        Queue::fake();
+        $this->makeStore('other-ron-store.test', 'RON');
+        Queue::assertNotPushed(UpdateExchangeRatesJob::class);
     }
 
     public function test_other_store_setting_changes_leave_product_caches_alone(): void
