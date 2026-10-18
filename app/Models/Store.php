@@ -6,6 +6,7 @@ use App\Casts\StoreScraperStrategySetCast;
 use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
+use App\Jobs\RegeneratePriceCache;
 use App\Jobs\UpdateExchangeRates;
 use App\Services\ExchangeRateService;
 use App\Services\Helpers\CurrencyHelper;
@@ -103,7 +104,11 @@ class Store extends Model
             // Cached product prices are converted from the store currency, so they are
             // stale as soon as it changes.
             if ($store->currencyWasChanged()) {
-                UpdateExchangeRates::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
+                if (! $store->usesAppCurrency()) {
+                    UpdateExchangeRates::dispatch();
+                }
+
+                RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
             }
         });
     }

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\AppSettingsPage;
+use App\Jobs\RegeneratePriceCache;
 use App\Jobs\UpdateExchangeRates;
 use App\Models\User;
 use App\Services\Helpers\SettingsHelper;
@@ -104,7 +105,8 @@ class AppSettingsPageTest extends TestCase
             ->call('save')
             ->assertHasNoFormErrors();
 
-        Queue::assertPushed(UpdateExchangeRates::class, fn (UpdateExchangeRates $job) => $job->productIds === null);
+        Queue::assertPushed(UpdateExchangeRates::class);
+        Queue::assertPushed(RegeneratePriceCache::class, fn (RegeneratePriceCache $job) => $job->productIds === null);
     }
 
     public function test_saving_without_a_currency_change_keeps_price_caches(): void
@@ -118,6 +120,7 @@ class AppSettingsPageTest extends TestCase
             ->assertHasNoFormErrors();
 
         Queue::assertNotPushed(UpdateExchangeRates::class);
+        Queue::assertNotPushed(RegeneratePriceCache::class);
     }
 
     public function test_retry_settings_reject_values_below_one(): void

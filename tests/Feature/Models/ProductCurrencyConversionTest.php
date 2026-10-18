@@ -4,6 +4,7 @@ namespace Tests\Feature\Models;
 
 use App\Console\Commands\UpdateExchangeRates;
 use App\Dto\PriceCacheDto;
+use App\Jobs\RegeneratePriceCache;
 use App\Jobs\UpdateExchangeRates as UpdateExchangeRatesJob;
 use App\Models\Product;
 use App\Models\Store;
@@ -236,6 +237,17 @@ class ProductCurrencyConversionTest extends TestCase
         Queue::fake();
         $this->makeStore('other-ron-store.test', 'RON');
         Queue::assertNotPushed(UpdateExchangeRatesJob::class);
+    }
+
+    public function test_changing_many_stores_at_once_queues_one_rates_update(): void
+    {
+        Queue::fake();
+        $stores = collect(['a', 'b', 'c'])->map(fn (string $name) => $this->makeStore("{$name}-store.test", 'RON'));
+
+        $stores->each(fn (Store $store) => $store->update(['settings' => ['locale_settings' => ['locale' => 'en', 'currency' => 'EUR']]]));
+
+        Queue::assertPushed(UpdateExchangeRatesJob::class, 1);
+        Queue::assertPushed(RegeneratePriceCache::class, 3);
     }
 
     public function test_other_store_setting_changes_leave_product_caches_alone(): void
