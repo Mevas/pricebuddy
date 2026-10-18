@@ -61,6 +61,12 @@ class UrlsTableWidget extends BaseWidget
                             ->default(1)
                             ->minValue(0.01)
                             ->required(),
+                        TextInput::make('additional_cost')
+                            ->label('Additional cost')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix(fn (Url $record): ?string => $record->store?->currency)
+                            ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping. Leave empty to use the store\'s.')),
                     ])
                     ->using(function (Url $record, array $data): Url {
                         // Validate/apply the URL change first so a failed change leaves
@@ -72,6 +78,7 @@ class UrlsTableWidget extends BaseWidget
                         }
 
                         $record->price_factor = (float) $data['price_factor'];
+                        $record->additional_cost = blank($data['additional_cost'] ?? null) ? null : (float) $data['additional_cost'];
                         $record->save();
 
                         return $record;

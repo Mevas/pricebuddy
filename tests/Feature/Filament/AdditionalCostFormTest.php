@@ -1,0 +1,119 @@
+<?php
+
+namespace Tests\Feature\Filament;
+
+use App\Filament\Resources\ProductResource\Widgets\UrlsTableWidget;
+use App\Filament\Resources\StoreResource\Pages\EditStore;
+use App\Models\Product;
+use App\Models\Store;
+use App\Models\Url;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
+use Tests\TestCase;
+use Tests\Traits\ScraperTrait;
+
+class AdditionalCostFormTest extends TestCase
+{
+    use RefreshDatabase;
+    use ScraperTrait;
+
+    protected User $user;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
+    }
+
+    public function test_store_form_saves_the_additional_cost(): void
+    {
+        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http']]);
+
+        $this->fillStoreForm($store, ['additional_cost' => 8.99, 'additional_cost_free_from' => 50])
+            ->assertHasNoFormErrors();
+
+        $store->refresh();
+        $this->assertSame(8.99, $store->additional_cost);
+        $this->assertSame(50.0, $store->additional_cost_free_from);
+    }
+
+    public function test_store_form_saves_an_empty_additional_cost_as_none(): void
+    {
+        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http'], 'additional_cost' => 5, 'additional_cost_free_from' => 50]);
+
+        $this->fillStoreForm($store, ['additional_cost' => null, 'additional_cost_free_from' => null])
+            ->assertHasNoFormErrors();
+
+        $store->refresh();
+        $this->assertNull($store->additional_cost);
+        $this->assertNull($store->additional_cost_free_from);
+    }
+
+    public function test_store_form_rejects_a_negative_additional_cost(): void
+    {
+        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http']]);
+
+        $this->fillStoreForm($store, ['additional_cost' => -1, 'additional_cost_free_from' => -1])
+            ->assertHasFormErrors(['additional_cost', 'additional_cost_free_from']);
+    }
+
+    public function test_link_form_saves_its_own_additional_cost(): void
+    {
+        $url = $this->makeUrl();
+
+        $this->editUrl($url, ['additional_cost' => 0])->assertHasNoTableActionErrors();
+        $this->assertSame(0.0, $url->refresh()->additional_cost);
+
+        $this->editUrl($url, ['additional_cost' => null])->assertHasNoTableActionErrors();
+        $this->assertNull($url->refresh()->additional_cost);
+    }
+
+    public function test_link_form_rejects_a_negative_additional_cost(): void
+    {
+        $this->editUrl($this->makeUrl(), ['additional_cost' => -1])
+            ->assertHasTableActionErrors(['additional_cost']);
+    }
+
+    public function test_store_export_leaves_out_the_additional_cost(): void
+    {
+        $store = Store::factory()->create(['additional_cost' => 8.99, 'additional_cost_free_from' => 50]);
+
+        $this->assertStringNotContainsString(
+            'additional_cost',
+            view('filament.resources.store-resource.actions.share-store', ['record' => $store])->render(),
+        );
+    }
+
+    protected function fillStoreForm(Store $store, array $data)
+    {
+        return Livewire::test(EditStore::class, ['record' => $store->getKey()])
+            ->set('data.domains', null)
+            ->fillForm(array_merge([
+                'domains' => [['domain' => 'example.com']],
+                'settings.locale_settings.locale' => 'en_US',
+                'settings.locale_settings.currency' => 'USD',
+            ], $data))
+            ->call('save');
+    }
+
+    protected function makeUrl(): Url
+    {
+        // Saving the link form validates the URL by scraping it.
+        $this->mockScrape(10, 'Example Product');
+
+        $product = Product::factory()
+            ->for($this->user)
+            ->addUrlWithPrices('https://example.com/product', [10])
+            ->createOne();
+
+        return $product->urls()->firstOrFail();
+    }
+
+    protected function editUrl(Url $url, array $data)
+    {
+        return Livewire::test(UrlsTableWidget::class, ['record' => $url->product])
+            ->callTableAction('edit', $url, data: array_merge(['url' => $url->url, 'price_factor' => 1], $data));
+    }
+}

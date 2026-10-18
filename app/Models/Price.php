@@ -42,13 +42,14 @@ class Price extends Model
     }
 
     /**
-     * This price in the app currency, so it compares with prices from other stores.
+     * What buying at this price costs in the app currency, with the link's additional cost,
+     * so it compares with prices from other stores.
      */
-    public function convertedPrice(): float
+    public function totalPrice(): float
     {
         $price = (float) $this->price;
 
-        return $this->url?->store?->currencyConversion()->convert($price) ?? $price;
+        return $this->url?->pricing()->total($price) ?? $price;
     }
 
     /***************************************************

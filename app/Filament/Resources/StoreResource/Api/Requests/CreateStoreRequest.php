@@ -41,6 +41,8 @@ class CreateStoreRequest extends FormRequest
             'settings.scraper_service_settings' => 'nullable|string',
             'settings.locale_settings.locale' => 'nullable|string',
             'settings.locale_settings.currency' => 'nullable|string',
+            'additional_cost' => 'nullable|numeric|min:0',
+            'additional_cost_free_from' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'user_id' => 'nullable|exists:users,id|in:'.auth()->id(),
         ], self::getStrategyRules());

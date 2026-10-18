@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use App\Dto\AdditionalCost;
+use App\Dto\CurrencyConversion;
+use App\Dto\ListingPricing;
 use App\Enums\StockStatus;
 use App\Events\AvailabilityChangedEvent;
+use App\Jobs\RegeneratePriceCache;
 use App\Services\AiConfigHealer;
 use App\Services\AiScrapeEnhancer;
 use App\Services\AutoCreateStore;
@@ -29,6 +33,7 @@ use Illuminate\Support\Uri;
  * @property ?string $url
  * @property ?string $url_normalized
  * @property float $price_factor
+ * @property ?float $additional_cost
  * @property string $product_name_short
  * @property string $store_name
  * @property string $buy_url
@@ -55,6 +60,13 @@ class Url extends Model
             $url->url_normalized = static::normalizeForMatch((string) $url->url) ?: null;
         });
 
+        static::updated(function (Url $url) {
+            // Cached product prices include the link's additional cost.
+            if ($url->wasChanged('additional_cost')) {
+                RegeneratePriceCache::dispatch([$url->product_id]);
+            }
+        });
+
         static::deleted(function (Url $url) {
             $url->prices()->delete();
             $url->product->updatePriceCache();
@@ -69,6 +81,7 @@ class Url extends Model
             'updated_at' => 'datetime',
             'created_at' => 'datetime',
             'availability' => StockStatus::class,
+            'additional_cost' => 'float',
         ];
     }
 
@@ -128,14 +141,21 @@ class Url extends Model
         );
     }
 
+    /**
+     * The latest price as the store shows it, with the additional cost of buying at it.
+     */
     protected function latestPriceFormatted(): Attribute
     {
         return Attribute::make(
-            get: fn () => CurrencyHelper::toString(
-                $this->latestPrice()->first()->price ?? 0,
-                locale: $this->store?->locale,
-                iso: $this->store?->currency
-            )
+            get: function (): string {
+                $price = (float) ($this->latestPrice()->first()->price ?? 0);
+                $cost = $this->additionalCost()->on($price);
+                $format = fn (float $amount): string => CurrencyHelper::toString($amount, locale: $this->store?->locale, iso: $this->store?->currency);
+
+                return $cost > 0
+                    ? __(':price + :cost additional cost', ['price' => $format($price), 'cost' => $format($cost)])
+                    : $format($price);
+            }
         );
     }
 
@@ -156,6 +176,30 @@ class Url extends Model
     /***************************************************
      * Helpers.
      **************************************************/
+
+    /**
+     * What buying from this link costs on top of a price: its own cost when it has one,
+     * otherwise its store's.
+     */
+    public function additionalCost(): AdditionalCost
+    {
+        if ($this->additional_cost !== null) {
+            return new AdditionalCost($this->additional_cost);
+        }
+
+        return $this->store?->additionalCost() ?? new AdditionalCost;
+    }
+
+    /**
+     * How this link's prices compare with other links' prices.
+     */
+    public function pricing(): ListingPricing
+    {
+        return new ListingPricing(
+            $this->store?->currencyConversion() ?? CurrencyConversion::identity(CurrencyHelper::getCurrency()),
+            $this->additionalCost(),
+        );
+    }
 
     /**
      * Build the normalised key used to decide whether two URLs point at the same

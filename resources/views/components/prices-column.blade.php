@@ -49,9 +49,9 @@
                                 (<x-price-factor-price :cache="$cache" />)
                             </span>
                         @endif
-                        @if ($cache->hasVisiblePrice() && $cache->isConverted())
+                        @if ($cache->hasVisiblePrice() && $cache->differsFromStorePrice())
                             <span class="text-xs text-inherit">
-                                (<x-store-currency-price :cache="$cache" />)
+                                (<x-store-price :cache="$cache" />)
                             </span>
                         @endif
                         {{ '@'.$cache->getStoreName() }}

@@ -235,6 +235,28 @@ class StoreApiTest extends TestCase
         ]);
     }
 
+    public function test_can_set_the_additional_cost(): void
+    {
+        $store = Store::factory()->create(['user_id' => $this->user->id]);
+
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => 8.99, 'additional_cost_free_from' => 50])
+            ->assertSuccessful()
+            ->assertJson(['data' => ['additional_cost' => 8.99, 'additional_cost_free_from' => 50]]);
+
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => null])->assertSuccessful();
+        $this->assertNull($store->refresh()->additional_cost);
+        $this->assertSame(50.0, $store->additional_cost_free_from);
+    }
+
+    public function test_additional_cost_must_not_be_negative(): void
+    {
+        $store = Store::factory()->create(['user_id' => $this->user->id]);
+
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => -1, 'additional_cost_free_from' => 'free'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['additional_cost', 'additional_cost_free_from']);
+    }
+
     public function test_create_store_validation_fails_with_invalid_data(): void
     {
         $invalidData = [

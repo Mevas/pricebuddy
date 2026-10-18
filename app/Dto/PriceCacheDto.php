@@ -46,6 +46,8 @@ class PriceCacheDto
 
     private float $storePrice;
 
+    private float $additionalCost;
+
     public function __construct(
         float $price,
         ?int $storeId = null,
@@ -63,6 +65,7 @@ class PriceCacheDto
         StockStatus|string|null $availability = null,
         ?string $storeCurrency = null,
         ?float $storePrice = null,
+        ?float $additionalCost = null,
     ) {
         $this->storeId = $storeId;
         $this->storeName = $storeName;
@@ -82,6 +85,7 @@ class PriceCacheDto
             : StockStatus::fromScrapedValue($availability);
         $this->storeCurrency = $storeCurrency ?? $this->currency;
         $this->storePrice = $storePrice ?? $price;
+        $this->additionalCost = $additionalCost ?? 0;
     }
 
     // Getters
@@ -167,6 +171,31 @@ class PriceCacheDto
     public function getStorePriceFormatted(): string
     {
         return CurrencyHelper::toString($this->storePrice, locale: $this->locale, iso: $this->storeCurrency);
+    }
+
+    /**
+     * Whether buying at the store price costs more on top, such as shipping.
+     */
+    public function hasAdditionalCost(): bool
+    {
+        return $this->additionalCost > 0;
+    }
+
+    /**
+     * The additional cost of buying at the store price, in the store's own currency.
+     */
+    public function getAdditionalCostFormatted(): string
+    {
+        return CurrencyHelper::toString($this->additionalCost, locale: $this->locale, iso: $this->storeCurrency);
+    }
+
+    /**
+     * Whether the price differs from the store price: it is converted, includes an
+     * additional cost, or both.
+     */
+    public function differsFromStorePrice(): bool
+    {
+        return $this->isConverted() || $this->hasAdditionalCost();
     }
 
     public function getUnitOfMeasure(): string
@@ -299,6 +328,7 @@ class PriceCacheDto
             $data['availability'] ?? null,
             $data['store_currency'] ?? null,
             $data['store_price'] ?? null,
+            $data['additional_cost'] ?? null,
         );
     }
 
@@ -326,6 +356,7 @@ class PriceCacheDto
             'currency' => $this->currency,
             'store_currency' => $this->storeCurrency,
             'store_price' => $this->storePrice,
+            'additional_cost' => $this->hasAdditionalCost() ? $this->additionalCost : null,
             'unit_of_measure' => $this->getUnitOfMeasure(),
             'availability' => $this->stockStatus === StockStatus::InStock ? null : $this->stockStatus->value,
         ];

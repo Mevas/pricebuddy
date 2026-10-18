@@ -72,6 +72,26 @@ class PriceCacheDtoTest extends TestCase
 
         $this->assertFalse($dto->isConverted());
         $this->assertSame('$10.00', $dto->getStorePriceFormatted());
+        $this->assertFalse($dto->hasAdditionalCost());
+        $this->assertFalse($dto->differsFromStorePrice());
+        $this->assertNull($dto->toArray()['additional_cost']);
+    }
+
+    public function test_price_with_an_additional_cost_shows_the_store_price_and_the_cost(): void
+    {
+        $dto = PriceCacheDto::fromArray([
+            'price' => 164.0,
+            'locale' => 'en',
+            'currency' => 'USD',
+            'store_price' => 149.0,
+            'additional_cost' => 15.0,
+        ]);
+
+        $this->assertFalse($dto->isConverted());
+        $this->assertTrue($dto->differsFromStorePrice());
+        $this->assertSame('$149.00', $dto->getStorePriceFormatted());
+        $this->assertSame('$15.00', $dto->getAdditionalCostFormatted());
+        $this->assertSame(15.0, $dto->toArray()['additional_cost']);
     }
 
     public function test_to_array_includes_unit_of_measure()

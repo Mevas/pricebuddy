@@ -36,6 +36,8 @@ class UpdateStoreRequest extends FormRequest
             'settings.scraper_service_settings' => 'nullable|string',
             'settings.locale_settings.locale' => 'sometimes|string',
             'settings.locale_settings.currency' => 'sometimes|string',
+            'additional_cost' => 'sometimes|nullable|numeric|min:0',
+            'additional_cost_free_from' => 'sometimes|nullable|numeric|min:0',
             'scrape_strategy' => 'sometimes|array',
             // The value rules are conditional on the type: schema_org takes no value,
             // everything else requires one. Shared with meta-extraction so a strategy that
