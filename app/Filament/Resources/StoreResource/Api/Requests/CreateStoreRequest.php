@@ -41,12 +41,23 @@ class CreateStoreRequest extends FormRequest
             'settings.scraper_service_settings' => 'nullable|string',
             'settings.locale_settings.locale' => 'nullable|string',
             'settings.locale_settings.currency' => 'nullable|string',
-            'additional_cost' => 'nullable|numeric|min:0',
-            'additional_cost_reduced_from' => 'nullable|numeric|gt:0',
-            'additional_cost_reduced' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'user_id' => 'nullable|exists:users,id|in:'.auth()->id(),
-        ], self::getStrategyRules());
+        ], self::getStrategyRules(), self::getAdditionalCostRules());
+    }
+
+    /**
+     * The additional cost and its reduction only make sense together: a reduction needs a
+     * cost to reduce, a reduced cost needs the price it applies from, and it is no more
+     * than the cost.
+     */
+    public static function getAdditionalCostRules(): array
+    {
+        return [
+            'additional_cost' => 'nullable|numeric|min:0|required_with:additional_cost_reduced_from',
+            'additional_cost_reduced_from' => 'nullable|numeric|gt:0|required_with:additional_cost_reduced',
+            'additional_cost_reduced' => 'nullable|numeric|min:0|lte:additional_cost',
+        ];
     }
 
     public static function getStrategyRules(): array

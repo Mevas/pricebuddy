@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 /**
  * What buying from a link costs: its price plus the additional cost of buying it, such
  * as shipping, converted from the store's currency into the app currency. Prices compare
- * by this wherever they are ranked or alerted on. toSql() repeats forUrl(), costAt() and
- * total() in SQL, so they must change together.
+ * by this wherever they are ranked or alerted on. whereUnitTotalAbove() repeats forUrl(),
+ * costAt() and total() in SQL, so they must change together.
  */
 final class ListingPricing
 {
@@ -69,23 +69,24 @@ final class ListingPricing
     }
 
     /**
-     * SQL for total() per unit of each price in $prices, a query over prices joined to their
-     * urls, which this joins to their stores. Prices and costs are doubles in PHP and in SQL
-     * alike, so they add up the same.
+     * Narrow $prices, a query over prices joined to their urls, to those whose total() per
+     * unit is above $column. It joins their stores for their costs. Prices and costs are
+     * doubles in PHP and in SQL alike, so they add up the same.
      *
      * @param  array<int, CurrencyConversion>  $conversionsByStore  conversions keyed by store ID
-     * @return array{string, array<int, int|string>} the SQL and its bindings
      */
-    public static function toSql(Builder $prices, array $conversionsByStore): array
+    public static function whereUnitTotalAbove(Builder $prices, string $column, array $conversionsByStore): Builder
     {
-        $prices->leftJoin('stores', 'stores.id', '=', 'urls.store_id');
-
         $costAt = 'CASE'
             .' WHEN prices.price <= 0 THEN 0'
             .' WHEN urls.additional_cost IS NOT NULL THEN urls.additional_cost'
             .' WHEN prices.price >= stores.additional_cost_reduced_from THEN COALESCE(stores.additional_cost_reduced, 0)'
             .' ELSE COALESCE(stores.additional_cost, 0) END';
 
-        return CurrencyConversion::toSqlPerUnit($conversionsByStore, "(prices.price + {$costAt})", 'urls.store_id', 'prices.price_factor');
+        [$unitTotal, $bindings] = CurrencyConversion::toSqlPerUnit($conversionsByStore, "(prices.price + {$costAt})", 'urls.store_id', 'prices.price_factor');
+
+        return $prices
+            ->leftJoin('stores', 'stores.id', '=', 'urls.store_id')
+            ->whereRaw("{$column} < {$unitTotal}", $bindings);
     }
 }

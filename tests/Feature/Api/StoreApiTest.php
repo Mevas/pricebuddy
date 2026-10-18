@@ -243,9 +243,29 @@ class StoreApiTest extends TestCase
             ->assertSuccessful()
             ->assertJson(['data' => ['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99]]);
 
-        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => null])->assertSuccessful();
+        // The stored reduction still holds the cost to the rules.
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost_reduced' => 3.99])->assertSuccessful();
+        $this->assertSame(3.99, $store->refresh()->additional_cost_reduced);
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => null])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['additional_cost']);
+
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => null, 'additional_cost_reduced_from' => null, 'additional_cost_reduced' => null])
+            ->assertSuccessful();
         $this->assertNull($store->refresh()->additional_cost);
-        $this->assertSame(150.0, $store->additional_cost_reduced_from);
+        $this->assertNull($store->additional_cost_reduced_from);
+    }
+
+    public function test_additional_cost_reduction_must_add_up(): void
+    {
+        $store = Store::factory()->create(['user_id' => $this->user->id]);
+
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => 8.99, 'additional_cost_reduced' => 4.99])
+            ->assertJsonValidationErrors(['additional_cost_reduced_from']);
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost_reduced_from' => 150])
+            ->assertJsonValidationErrors(['additional_cost']);
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 9.99])
+            ->assertJsonValidationErrors(['additional_cost_reduced']);
     }
 
     public function test_can_create_a_store_with_an_additional_cost(): void

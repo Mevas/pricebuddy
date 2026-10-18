@@ -56,6 +56,12 @@ class Store extends Model
 
     use HasSlug;
 
+    /**
+     * What sharing a store exports and importing one takes: how to scrape it, not what one
+     * instance has set for itself, such as its owner, cookies or additional cost.
+     */
+    public const array SHAREABLE = ['name', 'slug', 'domains', 'scrape_strategy', 'settings'];
+
     protected $fillable = [
         'name',
         'initials',

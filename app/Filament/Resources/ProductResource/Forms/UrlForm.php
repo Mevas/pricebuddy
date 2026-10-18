@@ -28,38 +28,53 @@ class UrlForm
                 ->default(1)
                 ->minValue(0.01)
                 ->required(),
-            TextInput::make('additional_cost')
-                ->label('Additional cost')
-                ->numeric()
-                ->minValue(0)
-                ->prefix($url->store?->currency)
-                ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping. Leave empty to use the store\'s.')),
+            self::additionalCostInput()->prefix($url->store?->currency),
         ];
     }
 
     /**
-     * Apply the form to $url. A new address is resolved first, so one that fails changes
-     * nothing. A link that moves to another store loses its own cost, which was in the old
-     * store's currency.
+     * A link's own additional cost, also asked for when a link is added.
+     */
+    public static function additionalCostInput(): TextInput
+    {
+        return TextInput::make('additional_cost')
+            ->label(__('Additional cost'))
+            ->numeric()
+            ->minValue(0)
+            ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping. Leave empty to use the store\'s.'));
+    }
+
+    /**
+     * The link's own additional cost from the input's state: none when it is left empty.
+     */
+    public static function additionalCost(mixed $state): ?float
+    {
+        return blank($state) ? null : (float) $state;
+    }
+
+    /**
+     * Apply the form to $url in one save, with a new address if it has one, so the fresh
+     * price of a new address is taken with the new factor and cost. A new address that
+     * fails to resolve changes nothing.
      *
      * @param  array<string, mixed>  $data
      * @return bool whether the new address resolved
      */
     public static function save(Url $url, array $data): bool
     {
-        $storeId = $url->store_id;
+        $attributes = [
+            'price_factor' => (float) $data['price_factor'],
+            'additional_cost' => self::additionalCost($data['additional_cost'] ?? null),
+        ];
 
-        if (trim($data['url']) !== $url->url && ! $url->changeUrl($data['url'])) {
+        $saved = trim($data['url']) === $url->url
+            ? $url->update($attributes)
+            : $url->changeUrl($data['url'], attributes: $attributes);
+
+        if (! $saved) {
             return false;
         }
 
-        $url->price_factor = (float) $data['price_factor'];
-
-        if ($url->store_id === $storeId) {
-            $url->additional_cost = blank($data['additional_cost'] ?? null) ? null : (float) $data['additional_cost'];
-        }
-
-        $url->save();
         $url->syncStoredPricesForCurrentFactor();
         $url->product->updatePriceCache();
 

@@ -150,18 +150,21 @@ class StoreResource extends Resource
                             ->label('Additional cost')
                             ->numeric()
                             ->minValue(0)
+                            ->requiredWith('additional_cost_reduced_from')
                             ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
                             ->hintIcon(Icons::Help->value, 'For example shipping or a payment fee. Leave empty if there is none. A product link can set its own cost instead'),
                         TextInput::make('additional_cost_reduced_from')
                             ->label('Reduced from')
                             ->numeric()
                             ->rule('gt:0')
+                            ->requiredWith('additional_cost_reduced')
                             ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
                             ->hintIcon(Icons::Help->value, 'From this price the cost is reduced, like free or cheaper shipping over a minimum order. Leave empty if it never is'),
                         TextInput::make('additional_cost_reduced')
                             ->label('Reduced cost')
                             ->numeric()
                             ->minValue(0)
+                            ->lte('additional_cost')
                             ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
                             ->hintIcon(Icons::Help->value, 'The cost from that price. Leave empty if it is free'),
                     ]),

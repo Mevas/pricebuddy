@@ -59,7 +59,7 @@ class Url extends Model
         });
 
         // A link's own cost is what its seller charges, in its store's currency, so it does
-        // not carry over to another store.
+        // not carry over to another store unless it is set again with the move.
         static::updating(function (Url $url) {
             if ($url->isDirty('store_id') && ! $url->isDirty('additional_cost')) {
                 $url->additional_cost = null;
@@ -348,7 +348,7 @@ class Url extends Model
         return null;
     }
 
-    public static function createFromUrl(string $url, ?int $productId = null, ?int $userId = null, bool $createStore = true, float $priceFactor = 1): Url|false
+    public static function createFromUrl(string $url, ?int $productId = null, ?int $userId = null, bool $createStore = true, float $priceFactor = 1, ?float $additionalCost = null): Url|false
     {
         $userId = $userId ?? auth()->id();
 
@@ -379,6 +379,7 @@ class Url extends Model
             'store_id' => $store->getKey(),
             'product_id' => $productId,
             'price_factor' => $priceFactor,
+            'additional_cost' => $additionalCost,
         ]);
 
         $urlModel->updatePrice(data_get($scrape, 'price'), $scrape);
@@ -390,9 +391,12 @@ class Url extends Model
      * Re-point this URL to a new address, keeping the record (and therefore its price
      * history) intact. The store is re-resolved from the new domain and a fresh price is
      * scraped and appended. Fails closed: on an invalid/unresolvable URL the record is
-     * left untouched and `false` is returned.
+     * left untouched and `false` is returned. $attributes, such as the price factor, are
+     * saved with the new address, so the fresh price is taken with them.
+     *
+     * @param  array<string, mixed>  $attributes
      */
-    public function changeUrl(string $newUrl, bool $createStore = true): bool
+    public function changeUrl(string $newUrl, bool $createStore = true, array $attributes = []): bool
     {
         $newUrl = trim($newUrl);
 
@@ -411,6 +415,7 @@ class Url extends Model
         }
 
         $this->forceFill([
+            ...$attributes,
             'url' => $newUrl,
             'store_id' => $store->getKey(),
         ])->save();

@@ -233,6 +233,26 @@ class ProductAdditionalCostTest extends TestCase
         $this->assertTrue($matching->contains($dropped->id));
     }
 
+    public function test_lowest_price_in_days_applies_a_reduced_cost_in_another_currency(): void
+    {
+        // 8.99 EUR shipping, or 4.99 EUR from 150 EUR, converted at a rate that does not terminate.
+        $this->store('eur-store.test')->update(['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99]);
+        $this->useRate(5.0302);
+
+        // 164.99 EUR every day.
+        $unchanged = $this->makeProduct(ronPrices: [], eurPrices: [160, 160, 160]);
+        // 157.99 then 154.99 EUR: the price rose to the reduced cost.
+        $dropped = $this->makeProduct(ronPrices: [], eurPrices: [149, 149, 150]);
+        // 154.99 then 155.99 EUR: the price fell below it.
+        $risen = $this->makeProduct(ronPrices: [], eurPrices: [150, 150, 147]);
+
+        $matching = Product::query()->lowestPriceInDays(7)->pluck('id');
+
+        $this->assertFalse($matching->contains($unchanged->id));
+        $this->assertTrue($matching->contains($dropped->id));
+        $this->assertFalse($matching->contains($risen->id));
+    }
+
     public function test_an_unchanged_price_with_a_cost_is_not_a_drop(): void
     {
         // Totals that are not exact in binary must still equal their own history row, both

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProductResource\Actions;
 
 use App\Enums\Icons;
+use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Models\Product;
 use App\Models\Url;
 use App\Rules\StoreUrl;
@@ -41,7 +42,8 @@ class AddUrlAction extends Action
                 ->numeric()
                 ->default(1)
                 ->minValue(0.01)
-                ->helperText(__('Number of items (unit price = price / factor)')),
+                ->helperText(__('Number of items (unit price = (price + additional cost) / factor)')),
+            UrlForm::additionalCostInput(),
         ]);
 
         $this->color('gray');
@@ -59,6 +61,7 @@ class AddUrlAction extends Action
                     productId: $product->getKey(),
                     userId: auth()->id(),
                     priceFactor: (float) ($data['price_factor'] ?? 1),
+                    additionalCost: UrlForm::additionalCost($data['additional_cost'] ?? null),
                 );
 
                 if ($urlModel === false) {

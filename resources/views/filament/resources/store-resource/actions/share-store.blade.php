@@ -1,12 +1,7 @@
 @php
 $export = json_encode(collect($record->toArray())
-    ->only([
-        'name',
-        'slug',
-        'domains',
-        'scrape_strategy',
-        'settings',
-    ])->toArray(), JSON_PRETTY_PRINT) ;
+    ->only(\App\Models\Store::SHAREABLE)
+    ->toArray(), JSON_PRETTY_PRINT) ;
 @endphp
 <div>
     <div x-data="{ tab: 'export' }">

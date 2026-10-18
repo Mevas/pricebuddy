@@ -4,6 +4,7 @@ namespace App\Filament\Resources\StoreResource\Api\Requests;
 
 use App\Enums\ScraperService;
 use App\Enums\ScraperStrategyType;
+use App\Models\Store;
 use App\Rules\ScrapeStrategyValue;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -23,6 +24,19 @@ class UpdateStoreRequest extends FormRequest
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
+    /**
+     * The cost fields are checked together, so the stored ones stand in for any the request
+     * leaves out.
+     */
+    protected function prepareForValidation(): void
+    {
+        $store = Store::query()->find($this->route('id'));
+
+        if ($store) {
+            $this->mergeIfMissing($store->only(array_keys(CreateStoreRequest::getAdditionalCostRules())));
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -36,9 +50,6 @@ class UpdateStoreRequest extends FormRequest
             'settings.scraper_service_settings' => 'nullable|string',
             'settings.locale_settings.locale' => 'sometimes|string',
             'settings.locale_settings.currency' => 'sometimes|string',
-            'additional_cost' => 'sometimes|nullable|numeric|min:0',
-            'additional_cost_reduced_from' => 'sometimes|nullable|numeric|gt:0',
-            'additional_cost_reduced' => 'sometimes|nullable|numeric|min:0',
             'scrape_strategy' => 'sometimes|array',
             // The value rules are conditional on the type: schema_org takes no value,
             // everything else requires one. Shared with meta-extraction so a strategy that
@@ -51,6 +62,7 @@ class UpdateStoreRequest extends FormRequest
             'scrape_strategy.title.value' => [new ScrapeStrategyValue],
             'notes' => 'sometimes|string',
             'user_id' => 'sometimes|exists:users,id|in:'.auth()->id(),
+            ...CreateStoreRequest::getAdditionalCostRules(),
         ];
     }
 }

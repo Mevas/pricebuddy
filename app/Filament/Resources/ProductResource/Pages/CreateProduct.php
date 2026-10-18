@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProductResource\Pages;
 
 use App\Filament\Resources\ProductResource;
+use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Models\Tag;
 use App\Models\Url;
 use Filament\Resources\Pages\CreateRecord;
@@ -27,6 +28,7 @@ class CreateProduct extends CreateRecord
             userId: auth()->id(),
             createStore: data_get($data, 'create_store', false),
             priceFactor: (float) data_get($data, 'price_factor', 1),
+            additionalCost: UrlForm::additionalCost(data_get($data, 'additional_cost')),
         );
 
         if ($urlModel === false) {

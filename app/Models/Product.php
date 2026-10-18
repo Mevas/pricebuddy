@@ -324,15 +324,14 @@ class Product extends Model
     {
         $conversions = Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all();
 
-        return $query->whereHas('prices', function (EloquentBuilder $priceQuery) use ($days, $conversions) {
-            [$unitPrice, $bindings] = ListingPricing::toSql($priceQuery, $conversions);
-
+        return $query->whereHas('prices', fn (EloquentBuilder $priceQuery) => ListingPricing::whereUnitTotalAbove(
             $priceQuery
                 ->where('prices.created_at', '>=', Carbon::now()->subDays($days)->startOfDay())
                 ->where('prices.created_at', '<', Carbon::now()->startOfDay())
-                ->where('prices.price', '>', 0)
-                ->whereRaw("current_price < {$unitPrice}", $bindings);
-        });
+                ->where('prices.price', '>', 0),
+            'current_price',
+            $conversions,
+        ));
     }
 
     /***************************************************
