@@ -93,8 +93,11 @@ class PriceHistoryChart extends ChartWidget
             'spanGaps' => true,
         ];
 
-        // Flat target line when a notify price is configured.
-        if ($this->record->notify_price !== null) {
+        // Flat target line when a notify price is configured. Targets are retail prices,
+        // so unit prices only show one when no URL is priced per pack.
+        $showsRetailPrices = ! $showUnitPrice || $urls->every(fn (Url $url) => ($url->price_factor ?: 1) == 1);
+
+        if ($this->record->notify_price !== null && $showsRetailPrices) {
             $target = (float) $this->record->notify_price;
             $datasets[] = [
                 'label' => 'Your target',

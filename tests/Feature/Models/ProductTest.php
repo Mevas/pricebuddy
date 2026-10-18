@@ -11,11 +11,14 @@ use App\Models\Product;
 use App\Models\Store;
 use App\Models\Url;
 use App\Models\User;
+use App\Notifications\PriceAlertNotification;
 use App\Services\Helpers\SettingsHelper;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\View;
 use Tests\TestCase;
 
@@ -106,6 +109,72 @@ class ProductTest extends TestCase
 
         $product = $this->createOneProductWithUrlAndPrices(prices: [60, 59, 61, 60]);
         $this->assertSame(Trend::None->value, $product->trend);
+    }
+
+    public function test_scope_lowest_price_in_days_compares_unit_prices()
+    {
+        // 19.80 for 500 is 0.0396 a unit: below the 19.80 rows, but it never moved.
+        $unchanged = $this->createOneProductWithUrlAndPrices(prices: [19.80, 19.80, 19.80], priceFactor: 500);
+        $dropped = $this->createOneProductWithUrlAndPrices(prices: [21.00, 20.50, 19.80], priceFactor: 500);
+        $risen = $this->createOneProductWithUrlAndPrices(prices: [19.80, 20.50, 21.00], priceFactor: 500);
+
+        $matching = Product::lowestPriceInDays(7)->pluck('id');
+
+        $this->assertFalse($matching->contains($unchanged->id));
+        $this->assertTrue($matching->contains($dropped->id));
+        $this->assertFalse($matching->contains($risen->id));
+    }
+
+    public function test_scope_lowest_price_in_days_does_not_match_an_uneven_unit_price_against_itself()
+    {
+        // 19.99 / 3 has no exact decimal value, so the stored current price and the
+        // price rows have to come to the same double.
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.99, 19.99, 19.99], priceFactor: 3);
+
+        $this->assertSame(19.99 / 3, $product->refresh()->current_price);
+        $this->assertFalse(Product::lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_a_unit_price_below_a_ten_thousandth_is_stored_exactly()
+    {
+        // 6.663333333333333e-5 is written in exponent form and needs all 17 digits.
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.99, 19.99], priceFactor: 300000);
+
+        $this->assertSame(19.99 / 300000, $product->refresh()->current_price);
+        $this->assertFalse(Product::lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_rebuilding_an_unchanged_price_cache_keeps_current_price()
+    {
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.99, 19.99], priceFactor: 3)->refresh();
+
+        $product->updatePriceCache();
+
+        $this->assertArrayNotHasKey('current_price', $product->getChanges());
+    }
+
+    public function test_price_trend_compares_unit_prices()
+    {
+        $product = $this->createOneProductWithUrlAndPrices(prices: [60, 50, 30, 40], priceFactor: 500);
+        $this->assertSame(Trend::Down->value, $product->trend);
+
+        $product = $this->createOneProductWithUrlAndPrices(prices: [60, 60, 70], priceFactor: 500);
+        $this->assertSame(Trend::Up->value, $product->trend);
+
+        $product = $this->createOneProductWithUrlAndPrices(prices: [60, 59, 61, 60], priceFactor: 3);
+        $this->assertSame(Trend::None->value, $product->trend);
+    }
+
+    public function test_price_trend_compares_unit_prices_across_pack_sizes()
+    {
+        // The 500-pack is the cheapest per unit, but it was 19.00 the day before.
+        $product = Product::factory()
+            ->addUrlWithPrices(self::DEFAULT_URL, [1.20, 1.00])
+            ->addUrlWithPrices('https://example.com/pack', [19.00, 19.80], priceFactor: 500)
+            ->createOne();
+
+        $this->assertSame(19.80 / 500, $product->current_price);
+        $this->assertSame(Trend::Down->value, $product->trend);
     }
 
     public function test_price_aggregates_for_lowest_priced_store()
@@ -399,6 +468,81 @@ class ProductTest extends TestCase
         $this->assertTrue($product->shouldNotifyOnPrice(5));
     }
 
+    public function test_notified_price_compares_the_retail_price()
+    {
+        // 19.80 for 500 is 0.0396 a unit; notify targets are retail prices, as alerts are.
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.80], attrs: ['notify_price' => 10, 'notify_percent' => null], priceFactor: 500);
+        $this->assertFalse($product->is_notified_price);
+
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.80], attrs: ['notify_price' => 19.80, 'notify_percent' => null], priceFactor: 500);
+        $this->assertTrue($product->is_notified_price);
+    }
+
+    public function test_price_alerts_compare_the_retail_price_of_a_pack()
+    {
+        Notification::fake();
+
+        // 0.0396 a unit is below the target, but 19.80 for the pack is not.
+        $product = $this->createOneProductWithUrlAndPrices(prices: [19.80], attrs: ['notify_price' => 10, 'notify_percent' => null], priceFactor: 500);
+        Notification::assertNothingSent();
+
+        $product->urls->first()->updatePrice(9.90);
+
+        Notification::assertSentTo($product->user, PriceAlertNotification::class);
+        $this->assertTrue($product->refresh()->is_notified_price);
+    }
+
+    public function test_price_alerts_and_the_notified_price_agree_across_pack_sizes()
+    {
+        Notification::fake();
+
+        // The 500-pack is the cheapest per unit, but only the single item meets the target.
+        $product = Product::factory()
+            ->addUrlWithPrices('https://example.com/pack', [19.80], priceFactor: 500)
+            ->addUrlWithPrices(self::DEFAULT_URL, [5.00])
+            ->createOne(['notify_price' => 10, 'notify_percent' => null]);
+
+        Notification::assertSentTo($product->user, PriceAlertNotification::class);
+        $this->assertTrue($product->is_notified_price);
+    }
+
+    public function test_notified_price_reads_the_first_price_once()
+    {
+        $product = Product::factory()
+            ->addUrlWithPrices('https://example.com/a', [30])
+            ->addUrlWithPrices('https://example.com/b', [31])
+            ->addUrlWithPrices('https://example.com/c', [32])
+            ->createOne(['notify_price' => null, 'notify_percent' => 50]);
+
+        DB::enableQueryLog();
+        $this->assertFalse($product->is_notified_price);
+
+        $priceQueries = collect(DB::getQueryLog())->filter(fn (array $query) => str_contains($query['query'], 'from `prices`'));
+        $this->assertCount(1, $priceQueries);
+    }
+
+    public function test_notified_price_is_false_when_every_url_is_unavailable()
+    {
+        $product = Product::factory()
+            ->addUrlWithPrices(self::DEFAULT_URL, [30], availability: StockStatus::OutOfStock)
+            ->createOne(['notify_price' => 9999, 'notify_percent' => null]);
+
+        $this->assertSame(0.0, $product->current_price);
+        $this->assertFalse($product->is_notified_price);
+    }
+
+    public function test_price_cache_follows_a_changed_price_cache()
+    {
+        $product = Product::factory()->createOne(['price_cache' => [['price' => 10, 'history' => []]]]);
+        $this->assertSame(10.0, $product->getPriceCache()->first()->getPrice());
+
+        $product->price_cache = [['price' => 20, 'history' => []]];
+        $this->assertSame(20.0, $product->getPriceCache()->first()->getPrice());
+
+        DB::table('products')->where('id', $product->getKey())->update(['price_cache' => json_encode([['price' => 30, 'history' => []]])]);
+        $this->assertSame(30.0, $product->refresh()->getPriceCache()->first()->getPrice());
+    }
+
     public function test_title_mutator_truncates_long_strings()
     {
         $shortTitle = 'Short Product Title';
@@ -563,10 +707,10 @@ class ProductTest extends TestCase
         $this->assertFalse($priceCacheItem->hasVisiblePrice());
     }
 
-    protected function createOneProductWithUrlAndPrices(string $url = self::DEFAULT_URL, array $prices = [10, 15, 20], array $attrs = []): Product
+    protected function createOneProductWithUrlAndPrices(string $url = self::DEFAULT_URL, array $prices = [10, 15, 20], array $attrs = [], float $priceFactor = 1): Product
     {
         return Product::factory()
-            ->addUrlWithPrices($url, $prices)
+            ->addUrlWithPrices($url, $prices, $priceFactor)
             ->createOne($attrs);
     }
 }

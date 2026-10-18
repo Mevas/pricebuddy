@@ -63,7 +63,7 @@ class DashboardSections
             'atLowest' => $products->filter(fn (Product $p): bool => $p->trend === Trend::Lowest->value)->count(),
             'belowAverage' => $products->filter(fn (Product $p): bool => in_array($p->trend, [Trend::Down->value, Trend::Lowest->value], true))->count(),
             'outOfStock' => $products->filter(fn (Product $p): bool => $this->isOutOfStock($p))->count(),
-            'potentialSavings' => round($products->sum(fn (Product $p): float => max(0, $p->getPriceCacheAggregate('avg') - $p->current_price)), 2),
+            'potentialSavings' => round($products->sum(fn (Product $p): float => max(0, $p->currentPriceBelowAverage())), 2),
         ];
     }
 
@@ -95,7 +95,7 @@ class DashboardSections
 
         return $this->trackedProducts()
             ->filter(fn (Product $p): bool => $droppedIds->contains($p->id))
-            ->sortByDesc(fn (Product $p): float => $p->getPriceCacheAggregate('avg') - $p->current_price)
+            ->sortByDesc(fn (Product $p): float => $p->currentPriceBelowAverage())
             ->values()
             ->take(self::RECENTLY_DROPPED_LIMIT);
     }

@@ -36,6 +36,10 @@ PriceBuddy will then show:
 * The unit price as the main comparison
 * The normal retail price underneath
 
+Price trends, the **Current price is lowest in** filter, the dashboard's summary
+stats and **Recently dropped** compare unit prices, so different pack sizes compare
+with each other.
+
 ## Check frequency &amp; pausing
 
 By default every product is checked on the global
@@ -79,7 +83,9 @@ product is cheapest.
 If a URL is unavailable and there is no current price, PriceBuddy will show the
 availability status instead of displaying a misleading zero price.
 
-Price history charts can also switch between retail price and unit price.
+Price history charts can also switch between retail price and unit price. Your
+notify price shows on the retail price chart, and on the unit price chart when no
+URL has a price factor.
 
 ## Price trends
 
@@ -108,6 +114,8 @@ Notifications require the following settings:
 * **Notify when back in stock** - Get notified when a tracked URL for this product
   becomes available again after being out of stock. This is independent of the
   price thresholds above.
+
+The notify price and percent compare the retail price of a URL, not its unit price.
 
 #### Global settings
 

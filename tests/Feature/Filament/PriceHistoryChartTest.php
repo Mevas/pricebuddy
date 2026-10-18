@@ -38,4 +38,17 @@ class PriceHistoryChartTest extends TestCase
         Livewire::test(PriceHistoryChart::class, ['record' => $product])
             ->assertSee('Your target');
     }
+
+    public function test_unit_prices_of_a_pack_have_no_target_line(): void
+    {
+        // The target is a retail price, so it only belongs on the retail prices of a 500-pack.
+        $product = Product::factory()
+            ->addUrlWithPrices('https://example-a.com/p', [19.80, 19.50], priceFactor: 500)
+            ->create(['notify_price' => 18.00]);
+
+        Livewire::test(PriceHistoryChart::class, ['record' => $product])
+            ->assertDontSee('Your target')
+            ->set('filter', 'retail_price')
+            ->assertSee('Your target');
+    }
 }

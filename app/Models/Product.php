@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\ExactFloat;
 use App\Dto\CurrencyConversion;
 use App\Dto\PriceCacheDto;
 use App\Enums\Statuses;
@@ -85,7 +86,18 @@ class Product extends Model
         'next_check_at' => 'datetime',
         'refresh_interval' => 'integer',
         'paused' => 'boolean',
+        // Stored exactly, so lowestPriceInDays comes to the same value in SQL.
+        'current_price' => ExactFloat::class,
     ];
+
+    /**
+     * getPriceCache() and the raw price_cache it was built from.
+     *
+     * @var ?Collection<int, PriceCacheDto>
+     */
+    private ?Collection $priceCacheDtos = null;
+
+    private mixed $priceCacheSource = null;
 
     public static function booted()
     {
@@ -303,24 +315,26 @@ class Product extends Model
     }
 
     /**
-     * Scope the lowest price in days. Prices from stores in another currency are converted
-     * in SQL with the stored rates and the same rounding as the price cache, which is
-     * rebuilt when the rates change.
+     * Scope the lowest price in days. current_price is a unit price, so prices are compared
+     * per unit too. Prices from stores in another currency are converted in SQL with the
+     * stored rates and the same rounding as the price cache, which is rebuilt when the
+     * rates change.
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
-        [$price, $bindings] = CurrencyConversion::toSql(
+        [$unitPrice, $bindings] = CurrencyConversion::toSqlPerUnit(
             Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all(),
             'prices.price',
             'urls.store_id',
+            'prices.price_factor',
         );
 
-        return $query->whereHas('prices', function ($priceQuery) use ($days, $price, $bindings) {
+        return $query->whereHas('prices', function ($priceQuery) use ($days, $unitPrice, $bindings) {
             $priceQuery
                 ->where('prices.created_at', '>=', Carbon::now()->subDays($days)->startOfDay())
                 ->where('prices.created_at', '<', Carbon::now()->startOfDay())
                 ->where('prices.price', '>', 0)
-                ->whereRaw("current_price < {$price}", $bindings);
+                ->whereRaw("current_price < {$unitPrice}", $bindings);
         });
     }
 
@@ -341,8 +355,8 @@ class Product extends Model
 
                 return Trend::calculateTrend(
                     $this->current_price,
-                    $this->getPriceCacheAggregate('avg'),
-                    $this->getPriceCacheAggregate('min'),
+                    $this->getUnitPriceAggregate('avg'),
+                    $this->getUnitPriceAggregate('min'),
                 );
             },
         );
@@ -426,12 +440,20 @@ class Product extends Model
     }
 
     /**
-     * Does lowest price match notification.
+     * Does an available URL's retail price match notification, as the price alerts check
+     * each URL's retail price. Both targets are met at or below a price, so the lowest
+     * available price decides.
      */
     public function isNotifiedPrice(): Attribute
     {
         return Attribute::make(
-            get: fn ($value): bool => $this->shouldNotifyOnPrice((float) $this->current_price)
+            get: function ($value): bool {
+                $lowest = $this->getPriceCache()
+                    ->reject(fn (PriceCacheDto $price) => $price->isUnavailable())
+                    ->min(fn (PriceCacheDto $price) => $price->getPrice());
+
+                return $lowest !== null && $this->shouldNotifyOnPrice($lowest);
+            }
         )->shouldCache();
     }
 
@@ -494,13 +516,19 @@ class Product extends Model
      **************************************************/
 
     /**
-     * Get the price cache for this product.
+     * Get the price cache for this product. Built once for each price_cache.
      *
-     * @return Collection<PriceCacheDto>
+     * @return Collection<int, PriceCacheDto>
      */
     public function getPriceCache(): Collection
     {
-        return collect($this->price_cache)
+        $raw = $this->attributes['price_cache'] ?? null;
+
+        if ($this->priceCacheDtos !== null && $this->priceCacheSource === $raw) {
+            return $this->priceCacheDtos;
+        }
+
+        $this->priceCacheDtos = collect($this->price_cache)
             ->sort(function (array $left, array $right): int {
                 $leftStatus = StockStatus::fromScrapedValue($left['availability'] ?? null)->getSortOrder();
                 $rightStatus = StockStatus::fromScrapedValue($right['availability'] ?? null)->getSortOrder();
@@ -516,6 +544,25 @@ class Product extends Model
             })
             ->map(fn ($price) => PriceCacheDto::fromArray($price))
             ->values();
+        $this->priceCacheSource = $raw;
+
+        return $this->priceCacheDtos;
+    }
+
+    /**
+     * The price cache entry current_price comes from: the cheapest available URL.
+     */
+    public function getCurrentPriceCache(): ?PriceCacheDto
+    {
+        return $this->getPriceCache()->first(fn (PriceCacheDto $price) => ! $price->isUnavailable());
+    }
+
+    /**
+     * The price factor of the URL current_price comes from.
+     */
+    public function currentPriceFactor(): float
+    {
+        return $this->getCurrentPriceCache()?->getPriceFactor() ?: 1;
     }
 
     /**
@@ -534,6 +581,29 @@ class Product extends Model
             ->filter(fn ($value) => $value > 0);
 
         return $values->isEmpty() ? 0 : round($values->{$method}(), 2);
+    }
+
+    /**
+     * A price aggregate per unit, so it compares with current_price. It is rounded to cents
+     * for as many units as the current price is for, so a price that has not changed still
+     * compares equal.
+     */
+    public function getUnitPriceAggregate(string $method = 'avg'): float
+    {
+        $values = $this->getPriceCache()
+            ->flatMap(fn (PriceCacheDto $price) => $price->getUnitHistory()->values())
+            ->filter(fn ($value) => $value > 0);
+        $units = $this->currentPriceFactor();
+
+        return $values->isEmpty() ? 0.0 : round($values->{$method}() * $units, 2) / $units;
+    }
+
+    /**
+     * How far the current price is below the average, for the pack it is sold in.
+     */
+    public function currentPriceBelowAverage(): float
+    {
+        return ($this->getUnitPriceAggregate('avg') - $this->current_price) * $this->currentPriceFactor();
     }
 
     /**
@@ -710,11 +780,12 @@ class Product extends Model
      */
     public function updatePriceCache(): void
     {
-        $priceCache = $this->buildPriceCache()->toArray();
-        $currentPrice = collect($priceCache)
-            ->first(fn (array $item) => StockStatus::fromScrapedValue($item['availability'] ?? null)->isUnavailable() === false)['unit_price'] ?? 0;
+        $this->price_cache = $this->buildPriceCache()->toArray();
 
-        $this->update(['price_cache' => $priceCache, 'current_price' => $currentPrice]);
+        // current_price is read from the cache as stored, so the two always agree. The JSON
+        // keeps the unit price exact while serialize_precision is -1, PHP's default.
+        // update() saves both.
+        $this->update(['current_price' => $this->getCurrentPriceCache()?->getUnitPrice() ?? 0]);
     }
 
     /**

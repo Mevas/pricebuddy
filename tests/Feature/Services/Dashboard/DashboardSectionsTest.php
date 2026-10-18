@@ -142,10 +142,10 @@ class DashboardSectionsTest extends TestCase
      * `addUrlWithPrices()` (backdates each price by day index, so the last
      * price in `$prices` becomes `current_price`).
      */
-    private function productWithPrices(array $prices, array $attrs = []): Product
+    private function productWithPrices(array $prices, array $attrs = [], float $priceFactor = 1): Product
     {
         return Product::factory()
-            ->addUrlWithPrices('https://example.com/'.uniqid(), $prices)
+            ->addUrlWithPrices('https://example.com/'.uniqid(), $prices, $priceFactor)
             ->create(array_merge([
                 'user_id' => $this->user->id,
                 'status' => 'p',
@@ -193,6 +193,21 @@ class DashboardSectionsTest extends TestCase
         $stats = (new DashboardSections($this->user))->statBar();
 
         $this->assertSame(5.0, $stats['potentialSavings']);
+    }
+
+    public function test_stat_bar_potential_savings_compare_unit_prices(): void
+    {
+        // A pack price that never moved saves nothing, and is at its lowest.
+        $this->productWithPrices([19.80, 19.80, 19.80], priceFactor: 500);
+
+        // 40 for 500 against a 45 average for 500 saves 5 on the pack, and is below average.
+        $this->productWithPrices([60, 50, 30, 40], priceFactor: 500);
+
+        $stats = (new DashboardSections($this->user))->statBar();
+
+        $this->assertSame(5.0, $stats['potentialSavings']);
+        $this->assertSame(1, $stats['atLowest']);
+        $this->assertSame(2, $stats['belowAverage']);
     }
 
     public function test_stat_bar_at_lowest_and_below_average_counts(): void
@@ -270,6 +285,21 @@ class DashboardSectionsTest extends TestCase
         $ids = (new DashboardSections($this->user))->recentlyDropped()->pluck('id')->values();
 
         $this->assertSame([$biggerDrop->id, $smallerDrop->id], $ids->all());
+    }
+
+    public function test_recently_dropped_compares_unit_prices(): void
+    {
+        // 19.80 for 500 is 0.0396 a unit, below every 19.80 row, but it never moved.
+        $unchanged = $this->productWithPrices([19.80, 19.80, 19.80], priceFactor: 500);
+
+        // 90 for 500 against a 95 average saves 5 on the pack, more than 3 on 40 against 43.
+        $packDrop = $this->productWithPrices([100, 90], priceFactor: 500);
+        $singleDrop = $this->productWithPrices([46, 40]);
+
+        $ids = (new DashboardSections($this->user))->recentlyDropped()->pluck('id')->values();
+
+        $this->assertSame([$packDrop->id, $singleDrop->id], $ids->all());
+        $this->assertFalse($ids->contains($unchanged->id));
     }
 
     public function test_recently_dropped_caps_to_six_highest_ranked(): void
