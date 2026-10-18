@@ -48,9 +48,11 @@ in the default currency.
 
 Rates are the latest European Central Bank reference rates from
 [Frankfurter](https://frankfurter.dev), fetched only when a store uses another
-currency, and cached for 12 hours. Price history is converted at the latest
-rate, so it shows how the store's own price moved. If no rate is available (for example the currency is not covered), that
-store's prices are left in its own currency and are not converted.
+currency, and refreshed every 12 hours. If a refresh fails, the last rates are
+kept and the refresh is retried a few minutes later. Price history is converted
+at the latest rate, so it shows how the store's own price moved. If no rate has
+ever been fetched for a currency (for example it is not covered), that store's
+prices are left in its own currency and are not converted.
 
 Set the `EXCHANGE_RATES_URL` environment variable to use another
 Frankfurter-compatible endpoint, or to an empty value to turn conversion off.

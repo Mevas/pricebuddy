@@ -42,9 +42,7 @@ class PriceCacheDto
 
     private StockStatus $stockStatus;
 
-    private string $storeCurrency;
-
-    private float $exchangeRate;
+    private CurrencyConversion $conversion;
 
     public function __construct(
         float $price,
@@ -80,8 +78,8 @@ class PriceCacheDto
         $this->stockStatus = $availability instanceof StockStatus
             ? $availability
             : StockStatus::fromScrapedValue($availability);
-        $this->storeCurrency = $storeCurrency ?? $this->currency;
-        $this->exchangeRate = $exchangeRate;
+        // Prices are in $currency, converted from the store's own currency at this rate.
+        $this->conversion = new CurrencyConversion($storeCurrency ?? $this->currency, $this->currency, $exchangeRate);
     }
 
     // Getters
@@ -150,7 +148,7 @@ class PriceCacheDto
      */
     public function isConverted(): bool
     {
-        return $this->storeCurrency !== $this->currency;
+        return $this->conversion->isConverted();
     }
 
     /**
@@ -158,7 +156,7 @@ class PriceCacheDto
      */
     public function getStorePriceFormatted(): string
     {
-        return CurrencyHelper::toString($this->getPrice() / $this->exchangeRate, locale: $this->locale, iso: $this->storeCurrency);
+        return CurrencyHelper::toString($this->conversion->revert($this->getPrice()), locale: $this->locale, iso: $this->conversion->from);
     }
 
     public function getUnitOfMeasure(): string
@@ -316,8 +314,8 @@ class PriceCacheDto
             'successful_last_scrape' => $this->isLastScrapeSuccessful(),
             'locale' => $this->locale,
             'currency' => $this->currency,
-            'store_currency' => $this->storeCurrency,
-            'exchange_rate' => $this->exchangeRate,
+            'store_currency' => $this->conversion->from,
+            'exchange_rate' => $this->conversion->rate,
             'unit_of_measure' => $this->getUnitOfMeasure(),
             'availability' => $this->stockStatus === StockStatus::InStock ? null : $this->stockStatus->value,
         ];

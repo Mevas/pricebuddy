@@ -6,6 +6,7 @@ use App\Casts\StoreScraperStrategySetCast;
 use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
+use App\Jobs\RegeneratePriceCache;
 use App\Services\ExchangeRateService;
 use App\Services\Helpers\CurrencyHelper;
 use Database\Factories\StoreFactory;
@@ -84,34 +85,20 @@ class Store extends Model
             // Delete URLs individually to trigger model events (which cascade delete prices).
             $store->urls->each->delete();
 
-            self::refreshProductCaches($products);
+            // Update price cache for all affected products.
+            $products->each(function (Product $product): void {
+                $product->updatePriceCache();
+                $product->updateInsightsCache();
+            });
         });
 
         static::updated(function (Store $store) {
             // Cached product prices are converted from the store currency, so they are
             // stale as soon as it changes.
             if ($store->currencyWasChanged()) {
-                self::refreshProductCaches($store->products()->get()->unique('id'));
+                RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
             }
         });
-    }
-
-    /**
-     * @param  iterable<Product>  $products
-     */
-    protected static function refreshProductCaches(iterable $products): void
-    {
-        foreach ($products as $product) {
-            $product->updatePriceCache();
-            $product->updateInsightsCache();
-        }
-    }
-
-    protected function currencyWasChanged(): bool
-    {
-        $previous = data_get($this->getOriginal('settings'), 'locale_settings.currency', CurrencyHelper::getCurrency());
-
-        return $this->wasChanged('settings') && $previous !== $this->currency;
     }
 
     public function getSlugOptions(): SlugOptions
@@ -276,13 +263,27 @@ class Store extends Model
     public function currency(): Attribute
     {
         return Attribute::make(
-            get: fn () => data_get($this->settings, 'locale_settings.currency', CurrencyHelper::getCurrency()),
+            get: fn (): string => self::currencyFrom($this->settings),
         );
+    }
+
+    /**
+     * The currency a store's settings resolve to. A missing or empty currency means the
+     * app currency.
+     */
+    protected static function currencyFrom(?array $settings): string
+    {
+        return data_get($settings, 'locale_settings.currency') ?: CurrencyHelper::getCurrency();
     }
 
     /***************************************************
      * Helpers.
      **************************************************/
+
+    protected function currencyWasChanged(): bool
+    {
+        return $this->wasChanged('settings') && self::currencyFrom($this->getOriginal('settings')) !== $this->currency;
+    }
 
     /**
      * How this store's prices are expressed in the app currency.

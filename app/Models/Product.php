@@ -303,17 +303,35 @@ class Product extends Model
     }
 
     /**
-     * Scope the lowest price in days.
+     * Scope to products whose current price is below a price seen in the last $days days,
+     * before today. Read from the price cache, where every store's prices are in the app
+     * currency, so it cannot be a SQL comparison against the raw prices table.
+     *
+     * @param  EloquentBuilder<Product>  $query
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
-        return $query->whereHas('prices', function ($priceQuery) use ($days) {
-            $priceQuery
-                ->where('prices.created_at', '>=', Carbon::now()->subDays($days)->startOfDay())
-                ->where('prices.created_at', '<', Carbon::now()->startOfDay())
-                ->where('prices.price', '>', 0)
-                ->whereColumn('current_price', '<', 'prices.price');
-        });
+        $from = Carbon::now()->subDays($days)->toDateString();
+        $today = Carbon::now()->toDateString();
+
+        $matching = (clone $query)->get()
+            ->filter(fn (Product $product): bool => $product->hasPriceAboveCurrentBetween($from, $today))
+            ->modelKeys();
+
+        return $query->whereKey($matching);
+    }
+
+    /**
+     * Whether any store's daily price from $from up to (not including) $to is above the
+     * current price.
+     */
+    protected function hasPriceAboveCurrentBetween(string $from, string $to): bool
+    {
+        return $this->getPriceCache()
+            ->flatMap(fn (PriceCacheDto $price) => $price->getHistory()
+                ->filter(fn ($value, string $date): bool => $date >= $from && $date < $to)
+                ->values())
+            ->contains(fn ($price): bool => $price > $this->current_price);
     }
 
     /***************************************************
@@ -583,7 +601,7 @@ class Product extends Model
                     'trend' => $trend,
                     'price' => $latestPrice,
                     'unit_price' => is_null($lastUnitPrice) ? $latestPrice : $conversion->convert($lastUnitPrice),
-                    'price_factor' => ($f = $url->price_factor ?: 1) == (int) $f ? (int) $f : $f,
+                    'price_factor' => self::wholeNumberAsInt($url->price_factor ?: 1),
                     'history' => $urlHistory->toArray(),
                     'last_scrape' => $lastScrapedTimestamp?->toDateTimeString(),
                     'locale' => $store->locale,
@@ -591,7 +609,7 @@ class Product extends Model
                     // rate used are kept so the price the store shows can be displayed too.
                     'currency' => $conversion->to,
                     'store_currency' => $conversion->from,
-                    'exchange_rate' => $conversion->rate,
+                    'exchange_rate' => self::wholeNumberAsInt($conversion->rate),
                     'unit_of_measure' => $this->unit_of_measure,
                     'availability' => $url->getAvailabilityStatus()?->value,
                 ];
@@ -612,6 +630,15 @@ class Product extends Model
             ->values();
 
         return $priceCache;
+    }
+
+    /**
+     * JSON stores a whole float such as 1.0 as 1, so the cache keeps it as an int and
+     * reads back exactly as it was built.
+     */
+    protected static function wholeNumberAsInt(float|int $value): float|int
+    {
+        return $value == (int) $value ? (int) $value : $value;
     }
 
     public function getAggregateRange(): array

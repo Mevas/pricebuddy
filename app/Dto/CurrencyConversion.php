@@ -3,9 +3,8 @@
 namespace App\Dto;
 
 /**
- * How amounts in one currency are expressed in another. When no rate is known the
- * conversion is the identity in the source currency, so an amount is never relabelled
- * with a currency it was not converted into.
+ * How amounts in one currency are expressed in another. Without a rate the conversion
+ * is the identity in the source currency, so an unconverted amount keeps its currency.
  */
 final class CurrencyConversion
 {
@@ -23,6 +22,14 @@ final class CurrencyConversion
     public function convert(float $amount): float
     {
         return $amount * $this->rate;
+    }
+
+    /**
+     * Turn a converted amount back into the source currency.
+     */
+    public function revert(float $amount): float
+    {
+        return $amount / $this->rate;
     }
 
     public function isConverted(): bool

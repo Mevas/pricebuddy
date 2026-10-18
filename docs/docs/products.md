@@ -101,7 +101,8 @@ Notifications require the following settings:
 #### Product settings
 
 * **Notify price** - The price must be equal or less than this value for the 
-  notification to be sent.
+  notification to be sent. It is in the default currency; prices from stores in
+  other currencies are converted before they are compared.
 * OR **Notify percent** - The price must be this percentage less than the initial
   price for the notification to be sent.
 * **Notify when back in stock** - Get notified when a tracked URL for this product

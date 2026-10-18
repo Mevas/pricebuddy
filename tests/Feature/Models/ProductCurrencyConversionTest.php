@@ -105,6 +105,30 @@ class ProductCurrencyConversionTest extends TestCase
         $this->assertEqualsWithDelta(745.0, $product->getPriceCacheAggregate('max'), 0.001);
     }
 
+    public function test_lowest_price_in_days_compares_converted_prices(): void
+    {
+        // 25 EUR (125 RON) is below the 30 and 29 EUR seen this week.
+        $dropped = $this->makeProduct(ronPrices: [], eurPrices: [30, 29, 25]);
+        // 30 EUR (150 RON) is the highest price this week.
+        $risen = $this->makeProduct(ronPrices: [], eurPrices: [20, 25, 30]);
+
+        $matching = Product::query()->lowestPriceInDays(7)->pluck('id');
+
+        $this->assertTrue($matching->contains($dropped->id));
+        $this->assertFalse($matching->contains($risen->id));
+    }
+
+    public function test_store_without_a_currency_uses_the_app_currency(): void
+    {
+        $store = $this->makeStore('blank-store.test', 'RON');
+        $store->update(['settings' => ['locale_settings' => ['locale' => 'en', 'currency' => null]]]);
+
+        $product = Product::factory()->addUrlWithPrices('https://blank-store.test/item', [10])->createOne()->refresh();
+
+        $this->assertSame('RON', $store->refresh()->currency);
+        $this->assertSame(10.0, (float) $product->current_price);
+    }
+
     public function test_other_store_setting_changes_leave_product_caches_alone(): void
     {
         $product = $this->makeProduct(ronPrices: [149], eurPrices: [25]);
@@ -121,7 +145,7 @@ class ProductCurrencyConversionTest extends TestCase
         Notification::fake();
 
         // 25 EUR is 125 RON: above a 100 RON target even though 25 is below it.
-        $product = $this->makeProduct(ronPrices: [149], eurPrices: [], attrs: ['notify_price' => 100]);
+        $product = $this->makeProduct(ronPrices: [149], eurPrices: [], attrs: ['notify_price' => 100, 'notify_percent' => null]);
         /** @var Url $eurUrl */
         $eurUrl = $product->urls()->create(['url' => self::EUR_URL, 'store_id' => Store::query()->where('name', 'eur-store.test')->value('id')]);
 
@@ -135,7 +159,7 @@ class ProductCurrencyConversionTest extends TestCase
 
     public function test_notification_percentage_is_measured_from_the_converted_first_price(): void
     {
-        $product = $this->makeProduct(ronPrices: [], eurPrices: [30], attrs: ['notify_percent' => 10]);
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [30], attrs: ['notify_price' => null, 'notify_percent' => 10]);
 
         // The first price is 30 EUR, 150 RON; 10% off is 135 RON.
         $this->assertFalse($product->shouldNotifyOnPrice(140));

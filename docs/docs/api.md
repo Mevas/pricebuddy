@@ -235,6 +235,14 @@ Without the parameter the key is absent and the response is unchanged.
 All matching entries are flagged, so a product tracking the same page twice gets `true`
 on both. `current_url` is also accepted on `GET /api/products`.
 
+### Price currency
+
+A product's `current_price` is in the app currency. Each `price_cache` entry's `price`,
+`unit_price` and `history` are in that entry's `currency`, which is the app currency when the
+store's prices could be converted. `store_currency` is the store's own currency and
+`exchange_rate` the rate used, so `price / exchange_rate` is the price the store shows. When no
+rate is available, `currency` equals `store_currency` and `exchange_rate` is `1`.
+
 ## Client config
 
 `GET /api/client-config`

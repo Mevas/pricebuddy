@@ -209,11 +209,10 @@ class ProductTest extends TestCase
         ], $first['history']);
 
         $this->assertSame('USD', $first['store_currency']);
-        $this->assertSame(1.0, $first['exchange_rate']);
+        $this->assertSame(1, $first['exchange_rate']);
 
-        // The cache is persisted as JSON, which stores a whole float such as 1.0 as 1.
         $product->updatePriceCache();
-        $this->assertSame(json_decode(json_encode($priceCache->toArray()), true), $product->price_cache);
+        $this->assertSame($priceCache->toArray(), $product->price_cache);
     }
 
     public function test_build_price_cache_includes_unit_price_and_factor()
