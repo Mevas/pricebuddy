@@ -304,8 +304,8 @@ class Product extends Model
 
     /**
      * Scope the lowest price in days. Prices from stores in another currency are converted
-     * in SQL, with the same rate and rounding as the price cache, so they compare with
-     * current_price.
+     * in SQL with the stored rates and the same rounding as the price cache (which is
+     * rebuilt when the rates change), so they compare with current_price.
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
@@ -657,7 +657,6 @@ class Product extends Model
             ->select(
                 'prices.id',
                 'prices.price',
-                'prices.unit_price',
                 'prices.price_factor',
                 'prices.created_at',
                 'urls.id as url_id',

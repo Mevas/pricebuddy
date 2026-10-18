@@ -155,6 +155,16 @@ class ProductCurrencyConversionTest extends TestCase
         $this->assertTrue(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
+    public function test_an_unchanged_price_at_a_half_cent_is_not_a_drop(): void
+    {
+        // 25.00 EUR at 4.9758 is exactly 124.395 RON: the cache and the SQL must round it alike.
+        $this->useRate(4.9758);
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [25, 25, 25]);
+
+        $this->assertSame(124.4, (float) $product->current_price);
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
     public function test_a_rate_change_recalculates_products_so_the_scope_agrees(): void
     {
         $this->useRate(5.0302);

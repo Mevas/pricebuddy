@@ -62,6 +62,17 @@ class ExchangeRateServiceTest extends TestCase
         $this->assertEqualsWithDelta(0.03924, $conversion->convertPerUnit(3.90, 500), 0.000001);
     }
 
+    public function test_half_cents_are_rounded_up_like_the_database_does(): void
+    {
+        // As floats these products sit just below the half cent and would round down.
+        $this->refreshWith(['RON' => 4.9758, 'JPY' => 162.45]);
+
+        $this->assertSame(124.4, $this->rates()->toAppCurrency('EUR')->convert(25.00));
+
+        SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'JPY']);
+        $this->assertSame(48.74, $this->rates()->toAppCurrency('EUR')->convert(0.30));
+    }
+
     public function test_rates_are_read_from_storage_without_a_lookup(): void
     {
         $this->refreshWith(['RON' => 5, 'USD' => 1.25]);

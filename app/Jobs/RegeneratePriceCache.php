@@ -14,6 +14,13 @@ class RegeneratePriceCache implements ShouldQueue
     use Queueable;
 
     /**
+     * Retried, because nothing queues a rebuild again after the rates or a currency change.
+     */
+    public int $tries = 3;
+
+    public int $backoff = 60;
+
+    /**
      * @param  ?array<int>  $productIds  null regenerates every product, an empty list none
      */
     public function __construct(public ?array $productIds = null) {}

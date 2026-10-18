@@ -62,9 +62,6 @@ class ScheduleTest extends TestCase
         return $schedule;
     }
 
-    /**
-     * Test that FetchAll command is scheduled with custom cron schedule.
-     */
     public function test_exchange_rates_are_updated_hourly(): void
     {
         $event = collect($this->rebuildSchedule()->events())
@@ -74,6 +71,9 @@ class ScheduleTest extends TestCase
         $this->assertSame('0 * * * *', $event->expression);
     }
 
+    /**
+     * Test that FetchAll command is scheduled with custom cron schedule.
+     */
     public function test_fetch_all_command_is_scheduled_with_default_cron(): void
     {
         // Set the scrape_schedule setting to default '0 6 * * *' (6 AM daily)
