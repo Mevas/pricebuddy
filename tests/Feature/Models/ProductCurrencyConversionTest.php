@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Models;
 
+use App\Console\Commands\UpdateExchangeRates;
 use App\Dto\PriceCacheDto;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Url;
 use App\Models\User;
 use App\Notifications\PriceAlertNotification;
+use App\Services\ExchangeRateService;
 use App\Services\Helpers\SettingsHelper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -27,7 +29,7 @@ class ProductCurrencyConversionTest extends TestCase
     const EUR_URL = 'https://eur-store.test/item';
 
     /**
-     * RON per 1 EUR quoted by the faked rates endpoint. Set it before any price is converted.
+     * RON per 1 EUR quoted by the faked rates endpoint.
      */
     protected float $ronPerEuro = 5;
 
@@ -41,6 +43,7 @@ class ProductCurrencyConversionTest extends TestCase
 
         $this->makeStore('ron-store.test', 'RON');
         $this->makeStore('eur-store.test', 'EUR');
+        $this->useRate(5);
     }
 
     public function test_prices_from_another_currency_are_converted_into_the_app_currency(): void
@@ -88,6 +91,7 @@ class ProductCurrencyConversionTest extends TestCase
     public function test_without_a_rate_prices_keep_their_store_currency(): void
     {
         config()->set('services.exchange_rates.url', '');
+        $this->app->forgetScopedInstances();
 
         $product = $this->makeProduct(ronPrices: [149], eurPrices: [25]);
 
@@ -127,7 +131,7 @@ class ProductCurrencyConversionTest extends TestCase
     {
         // 23.51 EUR at 5.0302 is 118.26002 RON: converted prices are rounded to cents, so an
         // unchanged price is not read as a rise or drop through float noise.
-        $this->ronPerEuro = 5.0302;
+        $this->useRate(5.0302);
 
         $foreign = $this->makeProduct(ronPrices: [], eurPrices: [23.51, 23.51, 23.51], attrs: ['notify_price' => 118.26, 'notify_percent' => null]);
         $local = $this->makeProduct(ronPrices: [118.26, 118.26, 118.26], eurPrices: []);
@@ -149,6 +153,41 @@ class ProductCurrencyConversionTest extends TestCase
 
         $this->assertEqualsWithDelta(125.0, $product->refresh()->current_price, 0.001);
         $this->assertTrue(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_a_rate_change_recalculates_products_so_the_scope_agrees(): void
+    {
+        $this->useRate(5.0302);
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [23.51, 23.51, 23.51]);
+
+        $this->ronPerEuro = 5.035;
+        $this->artisan(UpdateExchangeRates::COMMAND)->assertExitCode(0);
+
+        $this->assertSame(118.37, (float) $product->refresh()->current_price);
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_unit_prices_are_derived_from_converted_retail_prices(): void
+    {
+        // 500 units for 3.90 EUR (19.50 RON) beats 500 units for 19.80 RON.
+        $product = Product::factory()
+            ->addUrlWithPrices(self::RON_URL, [19.80], priceFactor: 500)
+            ->addUrlWithPrices(self::EUR_URL, [3.90], priceFactor: 500)
+            ->createOne(['user_id' => User::factory()])
+            ->refresh();
+        $eurUrl = $product->urls->firstWhere('url', self::EUR_URL);
+
+        $this->assertSame('eur-store.test', $product->getPriceCache()->first()->getStoreName());
+        $this->assertEqualsWithDelta(0.039, $product->current_price, 0.0000001);
+        $this->assertEqualsWithDelta(0.039, $product->getPriceHistory('unit_price')[$eurUrl->id]->last(), 0.0000001);
+    }
+
+    public function test_the_scope_keeps_local_prices_as_scraped(): void
+    {
+        // Another store converts prices, but this product's local prices are not rounded.
+        $product = $this->makeProduct(ronPrices: [45.319, 45.319, 45.319], eurPrices: []);
+
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
     public function test_store_without_a_currency_uses_the_app_currency(): void
@@ -197,6 +236,15 @@ class ProductCurrencyConversionTest extends TestCase
         // The first price is 30 EUR, 150 RON; 10% off is 135 RON.
         $this->assertFalse($product->shouldNotifyOnPrice(140));
         $this->assertTrue($product->shouldNotifyOnPrice(135));
+    }
+
+    /**
+     * Store the rates as buddy:update-exchange-rates does.
+     */
+    protected function useRate(float $ronPerEuro): void
+    {
+        $this->ronPerEuro = $ronPerEuro;
+        app(ExchangeRateService::class)->refresh();
     }
 
     protected function makeStore(string $domain, string $currency): Store

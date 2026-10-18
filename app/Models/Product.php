@@ -309,17 +309,11 @@ class Product extends Model
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
-        $conversions = Store::all()
-            ->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])
-            ->filter(fn (CurrencyConversion $conversion): bool => $conversion->isConverted());
-
-        // Stores in the app currency need no rate; with none to convert this is the raw price.
-        $price = $conversions->isEmpty()
-            ? 'prices.price'
-            : 'ROUND(prices.price * CASE urls.store_id '.$conversions->map(fn () => 'WHEN ? THEN ?')->implode(' ').' ELSE 1 END, 2)';
-        $bindings = $conversions
-            ->flatMap(fn (CurrencyConversion $conversion, int $storeId): array => [$storeId, $conversion->rate])
-            ->all();
+        [$price, $bindings] = CurrencyConversion::toSql(
+            Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all(),
+            'prices.price',
+            'urls.store_id',
+        );
 
         return $query->whereHas('prices', function ($priceQuery) use ($days, $price, $bindings) {
             $priceQuery
@@ -576,7 +570,6 @@ class Product extends Model
                 /** @var ?Price $lastScrapedPrice */
                 $lastScrapedPrice = $url->prices()->latest('id')->first();
                 $lastScrapedTimestamp = $lastScrapedPrice?->created_at;
-                $lastUnitPrice = $lastScrapedPrice?->unit_price;
                 $latestPrice = $urlHistory->isEmpty() ? 0 : $urlHistory->last();
 
                 // Build trend, current price vs average price (skip for URLs with no history).
@@ -596,7 +589,9 @@ class Product extends Model
                     'url' => $url->buy_url,
                     'trend' => $trend,
                     'price' => $latestPrice,
-                    'unit_price' => is_null($lastUnitPrice) ? $latestPrice : $conversion->convert($lastUnitPrice),
+                    'unit_price' => $lastScrapedPrice
+                        ? $conversion->convertPerUnit((float) $lastScrapedPrice->price, (float) $lastScrapedPrice->price_factor)
+                        : $latestPrice,
                     'price_factor' => ($f = $url->price_factor ?: 1) == (int) $f ? (int) $f : $f,
                     'history' => $urlHistory->toArray(),
                     'last_scrape' => $lastScrapedTimestamp?->toDateTimeString(),
@@ -728,7 +723,7 @@ class Product extends Model
      */
     public function getPriceHistory(string $column = 'price'): Collection
     {
-        $priceColumn = $column === 'unit_price' ? 'unit_price' : 'price';
+        $perUnit = $column === 'unit_price';
 
         $prices = $this->getAllPricesQuery()
             ->whereDate('prices.created_at', '>=', now()->subYear())
@@ -744,18 +739,18 @@ class Product extends Model
 
         return $prices
             ->groupBy('url_id')
-            ->mapWithKeys(function ($prices, int $urlId) use ($priceColumn, $conversions) {
-                /** @var ?CurrencyConversion $conversion */
-                $conversion = $conversions->get($prices->first()->store_id);
+            ->mapWithKeys(function ($prices, int $urlId) use ($perUnit, $conversions) {
+                /** @var CurrencyConversion $conversion */
+                $conversion = $conversions->get($prices->first()->store_id) ?? CurrencyConversion::identity(CurrencyHelper::getCurrency());
 
                 // All price entries for the store.
                 $storeHistory = $prices->sortBy('created_at')
                     ->groupBy('created_at')
-                    ->mapWithKeys(function ($prices, string $date) use ($priceColumn, $conversion) {
-                        $price = (float) $prices->pluck($priceColumn)->min();
-
-                        return [Carbon::parse($date)->toDateString() => $conversion?->convert($price) ?? $price];
-                    });
+                    ->mapWithKeys(fn ($prices, string $date) => [
+                        Carbon::parse($date)->toDateString() => $prices
+                            ->map(fn ($price): float => $conversion->convertPerUnit((float) $price->price, $perUnit ? (float) $price->price_factor : 1))
+                            ->min(),
+                    ]);
 
                 // If only one price, extend back one day.
                 if ($storeHistory->count() === 1) {

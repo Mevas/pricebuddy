@@ -4,6 +4,7 @@ namespace Tests\Feature\Schedule;
 
 use App\Console\Commands\FetchAll;
 use App\Console\Commands\FetchDue;
+use App\Console\Commands\UpdateExchangeRates;
 use App\Models\UrlResearch;
 use App\Services\Helpers\ScheduleHelper;
 use App\Services\Helpers\SettingsHelper;
@@ -64,6 +65,15 @@ class ScheduleTest extends TestCase
     /**
      * Test that FetchAll command is scheduled with custom cron schedule.
      */
+    public function test_exchange_rates_are_updated_hourly(): void
+    {
+        $event = collect($this->rebuildSchedule()->events())
+            ->first(fn ($event) => str_contains($event->command ?? '', UpdateExchangeRates::COMMAND));
+
+        $this->assertNotNull($event);
+        $this->assertSame('0 * * * *', $event->expression);
+    }
+
     public function test_fetch_all_command_is_scheduled_with_default_cron(): void
     {
         // Set the scrape_schedule setting to default '0 6 * * *' (6 AM daily)

@@ -290,7 +290,7 @@ class Store extends Model
      */
     public function currencyConversion(): CurrencyConversion
     {
-        return ExchangeRateService::toAppCurrency($this->currency);
+        return app(ExchangeRateService::class)->toAppCurrency($this->currency);
     }
 
     public function hasDomain($domain): bool
