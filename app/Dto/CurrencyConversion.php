@@ -65,22 +65,24 @@ final class CurrencyConversion
     }
 
     /**
-     * SQL for $priceColumn converted per store, the same way as convert(): a store with a
+     * SQL for $priceSql converted per store, the same way as convert(): a store with a
      * conversion is multiplied by its rate in decimal arithmetic and rounded to cents, and
      * every other store keeps the price as scraped.
      *
      * @param  array<int, self>  $byStore  conversions keyed by store ID
+     * @param  string  $priceSql  pasted once per converted store and once more for the
+     *                            others, so it must not contain ? placeholders
      * @return array{string, array<int, int|string>} the SQL and its bindings
      */
-    public static function toSql(array $byStore, string $priceColumn, string $storeColumn): array
+    private static function toSql(array $byStore, string $priceSql, string $storeColumn): array
     {
         $converted = array_filter($byStore, fn (self $conversion): bool => $conversion->isConverted());
 
         if ($converted === []) {
-            return [$priceColumn, []];
+            return [$priceSql, []];
         }
 
-        $amount = 'CAST('.$priceColumn.' AS DECIMAL(20, '.self::AMOUNT_SCALE.'))';
+        $amount = 'CAST('.$priceSql.' AS DECIMAL(20, '.self::AMOUNT_SCALE.'))';
         $rate = 'CAST(? AS DECIMAL(20, '.self::RATE_SCALE.'))';
         $when = " WHEN ? THEN ROUND({$amount} * {$rate}, 2)";
         $bindings = [];
@@ -89,20 +91,22 @@ final class CurrencyConversion
             array_push($bindings, $storeId, $conversion->rateAsDecimal());
         }
 
-        return ["CASE {$storeColumn}".str_repeat($when, count($converted))." ELSE {$priceColumn} END", $bindings];
+        return ["CASE {$storeColumn}".str_repeat($when, count($converted))." ELSE {$priceSql} END", $bindings];
     }
 
     /**
-     * SQL for the unit price of $priceColumn, the same way as convertPerUnit(): converted
-     * as toSql() does, then divided by $factorColumn. The factor column is a double, so the
+     * SQL for the unit price of $priceSql, the same way as convertPerUnit(): converted as
+     * toSql() does, then divided by $factorColumn. The factor column is a double, so the
      * division is in floating point, which PHP and every database round alike.
      *
      * @param  array<int, self>  $byStore  conversions keyed by store ID
+     * @param  string  $priceSql  pasted once per converted store and once more for the
+     *                            others, so it must not contain ? placeholders
      * @return array{string, array<int, int|string>} the SQL and its bindings
      */
-    public static function toSqlPerUnit(array $byStore, string $priceColumn, string $storeColumn, string $factorColumn): array
+    public static function toSqlPerUnit(array $byStore, string $priceSql, string $storeColumn, string $factorColumn): array
     {
-        [$price, $bindings] = self::toSql($byStore, $priceColumn, $storeColumn);
+        [$price, $bindings] = self::toSql($byStore, $priceSql, $storeColumn);
 
         return ["({$price}) / COALESCE(NULLIF({$factorColumn}, 0), 1)", $bindings];
     }

@@ -146,6 +146,14 @@ class PriceCacheDto
     }
 
     /**
+     * The history per unit, so it compares with getUnitPrice().
+     */
+    public function getUnitHistory(int $count = 365): Collection
+    {
+        return $this->getHistory($count)->map(fn ($price) => $price / ($this->priceFactor ?: 1));
+    }
+
+    /**
      * Whether the prices were converted from the store's own currency.
      */
     public function isConverted(): bool

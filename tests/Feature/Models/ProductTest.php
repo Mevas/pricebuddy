@@ -473,6 +473,29 @@ class ProductTest extends TestCase
         $this->assertTrue($product->refresh()->is_notified_price);
     }
 
+    public function test_price_alerts_and_the_notified_price_agree_across_pack_sizes()
+    {
+        Notification::fake();
+
+        // The 500-pack is the cheapest per unit, but only the single item meets the target.
+        $product = Product::factory()
+            ->addUrlWithPrices('https://example.com/pack', [19.80], priceFactor: 500)
+            ->addUrlWithPrices(self::DEFAULT_URL, [5.00])
+            ->createOne(['notify_price' => 10, 'notify_percent' => null]);
+
+        Notification::assertSentTo($product->user, PriceAlertNotification::class);
+        $this->assertTrue($product->is_notified_price);
+    }
+
+    public function test_price_cache_follows_a_changed_price_cache()
+    {
+        $product = Product::factory()->createOne(['price_cache' => [['price' => 10, 'history' => []]]]);
+        $this->assertSame(10.0, $product->getPriceCache()->first()->getPrice());
+
+        $product->price_cache = [['price' => 20, 'history' => []]];
+        $this->assertSame(20.0, $product->getPriceCache()->first()->getPrice());
+    }
+
     public function test_title_mutator_truncates_long_strings()
     {
         $shortTitle = 'Short Product Title';

@@ -24,12 +24,12 @@ class ExactFloat implements CastsAttributes
 
     /**
      * Seventeen significant digits read back as the same double, whatever the precision
-     * settings are.
+     * settings are. %h is %g without the locale, which could write a decimal comma.
      *
      * @param  array<string, mixed>  $attributes
      */
     public function set(Model $model, string $key, mixed $value, array $attributes): ?string
     {
-        return $value === null ? null : sprintf('%.17g', (float) $value);
+        return $value === null ? null : sprintf('%.17h', (float) $value);
     }
 }

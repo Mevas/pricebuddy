@@ -90,6 +90,15 @@ class Product extends Model
         'current_price' => ExactFloat::class,
     ];
 
+    /**
+     * getPriceCache() and the raw price_cache it was built from.
+     *
+     * @var ?Collection<int, PriceCacheDto>
+     */
+    private ?Collection $priceCacheDtos = null;
+
+    private mixed $priceCacheSource = null;
+
     public static function booted()
     {
         static::deleted(function (Product $product) {
@@ -346,8 +355,8 @@ class Product extends Model
 
                 return Trend::calculateTrend(
                     $this->current_price,
-                    $this->getPriceCacheAggregate('avg', perUnit: true),
-                    $this->getPriceCacheAggregate('min', perUnit: true),
+                    $this->getUnitPriceAggregate('avg'),
+                    $this->getUnitPriceAggregate('min'),
                 );
             },
         );
@@ -431,13 +440,13 @@ class Product extends Model
     }
 
     /**
-     * Does lowest price match notification. Notify targets are retail prices, as in the
-     * price alerts, so this is the retail price behind current_price.
+     * Does an available URL's retail price match notification, as the price alerts check
+     * each URL's retail price.
      */
     public function isNotifiedPrice(): Attribute
     {
         return Attribute::make(
-            get: fn ($value): bool => $this->getCurrentPriceCache()?->matchesNotification($this) ?? false
+            get: fn ($value): bool => $this->getPriceCache()->contains(fn (PriceCacheDto $price) => $price->matchesNotification($this))
         )->shouldCache();
     }
 
@@ -500,13 +509,19 @@ class Product extends Model
      **************************************************/
 
     /**
-     * Get the price cache for this product.
+     * Get the price cache for this product. Built once for each price_cache.
      *
-     * @return Collection<PriceCacheDto>
+     * @return Collection<int, PriceCacheDto>
      */
     public function getPriceCache(): Collection
     {
-        return collect($this->price_cache)
+        $raw = $this->attributes['price_cache'] ?? null;
+
+        if ($this->priceCacheDtos !== null && $this->priceCacheSource === $raw) {
+            return $this->priceCacheDtos;
+        }
+
+        $this->priceCacheDtos = collect($this->price_cache)
             ->sort(function (array $left, array $right): int {
                 $leftStatus = StockStatus::fromScrapedValue($left['availability'] ?? null)->getSortOrder();
                 $rightStatus = StockStatus::fromScrapedValue($right['availability'] ?? null)->getSortOrder();
@@ -522,6 +537,9 @@ class Product extends Model
             })
             ->map(fn ($price) => PriceCacheDto::fromArray($price))
             ->values();
+        $this->priceCacheSource = $raw;
+
+        return $this->priceCacheDtos;
     }
 
     /**
@@ -533,27 +551,52 @@ class Product extends Model
     }
 
     /**
-     * Get the price aggregate for this product via getPriceCache(). Per unit, it compares
-     * with current_price: prices are rounded to cents for as many units as the current
-     * price is for, so a price that has not changed still compares equal.
+     * The price factor of the URL current_price comes from.
      */
-    public function getPriceCacheAggregate(string $method = 'avg', ?int $urlId = null, bool $perUnit = false): float|int
+    public function currentPriceFactor(): float
+    {
+        return $this->getCurrentPriceCache()?->getPriceFactor() ?: 1;
+    }
+
+    /**
+     * Get the price aggregate for this product via getPriceCache().
+     */
+    public function getPriceCacheAggregate(string $method = 'avg', ?int $urlId = null): float|int
     {
         $cache = $this->getPriceCache();
-        $units = $perUnit ? ($this->getCurrentPriceCache()?->getPriceFactor() ?: 1) : 1;
 
         if ($urlId) {
             $cache = $cache->filter(fn (PriceCacheDto $price) => $price->getUrlId() === $urlId);
         }
 
-        $values = $cache->map(fn (PriceCacheDto $price) => $price->getHistory()
-            ->map(fn ($value) => $perUnit ? $value / ($price->getPriceFactor() ?: 1) * $units : $value)
-            ->values()
-            ->toArray())
+        $values = $cache->map(fn (PriceCacheDto $price) => $price->getHistory()->values()->toArray())
             ->flatten()
             ->filter(fn ($value) => $value > 0);
 
-        return $values->isEmpty() ? 0 : round($values->{$method}(), 2) / $units;
+        return $values->isEmpty() ? 0 : round($values->{$method}(), 2);
+    }
+
+    /**
+     * A price aggregate per unit, so it compares with current_price. It is rounded to cents
+     * for as many units as the current price is for, so a price that has not changed still
+     * compares equal.
+     */
+    public function getUnitPriceAggregate(string $method = 'avg'): float
+    {
+        $values = $this->getPriceCache()
+            ->flatMap(fn (PriceCacheDto $price) => $price->getUnitHistory()->values())
+            ->filter(fn ($value) => $value > 0);
+        $units = $this->currentPriceFactor();
+
+        return $values->isEmpty() ? 0.0 : round($values->{$method}() * $units, 2) / $units;
+    }
+
+    /**
+     * How far the current price is below the average, for the pack it is sold in.
+     */
+    public function currentPriceBelowAverage(): float
+    {
+        return ($this->getUnitPriceAggregate('avg') - $this->current_price) * $this->currentPriceFactor();
     }
 
     /**
@@ -730,11 +773,11 @@ class Product extends Model
      */
     public function updatePriceCache(): void
     {
-        $priceCache = $this->buildPriceCache()->toArray();
-        $currentPrice = collect($priceCache)
-            ->first(fn (array $item) => StockStatus::fromScrapedValue($item['availability'] ?? null)->isUnavailable() === false)['unit_price'] ?? 0;
+        $this->price_cache = $this->buildPriceCache()->toArray();
 
-        $this->update(['price_cache' => $priceCache, 'current_price' => $currentPrice]);
+        // current_price is read from the cache as stored, so the two always agree.
+        // update() saves both.
+        $this->update(['current_price' => $this->getCurrentPriceCache()?->getUnitPrice() ?? 0]);
     }
 
     /**
