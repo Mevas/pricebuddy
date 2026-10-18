@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Casts\StoreScraperStrategySetCast;
+use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
+use App\Jobs\RegeneratePriceCache;
+use App\Services\ExchangeRateService;
 use App\Services\Helpers\CurrencyHelper;
 use Database\Factories\StoreFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -87,6 +90,14 @@ class Store extends Model
                 $product->updatePriceCache();
                 $product->updateInsightsCache();
             });
+        });
+
+        static::updated(function (Store $store) {
+            // Cached product prices are converted from the store currency, so they are
+            // stale as soon as it changes.
+            if ($store->currencyWasChanged()) {
+                RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
+            }
         });
     }
 
@@ -252,13 +263,35 @@ class Store extends Model
     public function currency(): Attribute
     {
         return Attribute::make(
-            get: fn () => data_get($this->settings, 'locale_settings.currency', CurrencyHelper::getCurrency()),
+            get: fn (): string => self::currencyFrom($this->settings),
         );
+    }
+
+    /**
+     * The currency a store's settings resolve to. A missing or empty currency means the
+     * app currency.
+     */
+    protected static function currencyFrom(?array $settings): string
+    {
+        return data_get($settings, 'locale_settings.currency') ?: CurrencyHelper::getCurrency();
     }
 
     /***************************************************
      * Helpers.
      **************************************************/
+
+    protected function currencyWasChanged(): bool
+    {
+        return $this->wasChanged('settings') && self::currencyFrom($this->getOriginal('settings')) !== $this->currency;
+    }
+
+    /**
+     * How this store's prices are expressed in the app currency.
+     */
+    public function currencyConversion(): CurrencyConversion
+    {
+        return app(ExchangeRateService::class)->toAppCurrency($this->currency);
+    }
 
     public function hasDomain($domain): bool
     {

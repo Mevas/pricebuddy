@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Policies\ProductPolicy;
 use App\Policies\ProductSourcePolicy;
 use App\Policies\UserPolicy;
+use App\Services\ExchangeRateService;
 use App\Services\Helpers\NotificationsHelper;
 use App\Services\Helpers\QueueHelper;
 use App\Services\Helpers\SettingsHelper;
@@ -25,7 +26,8 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Reads the stored exchange rates once per request or queued job.
+        $this->app->scoped(ExchangeRateService::class);
     }
 
     public function boot(): void

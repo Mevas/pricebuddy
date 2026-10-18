@@ -12,6 +12,7 @@ use App\Filament\Actions\Notifications\TestDiscordAction;
 use App\Filament\Actions\Notifications\TestGotifyAction;
 use App\Filament\Actions\Notifications\TestTelegramAction;
 use App\Filament\Traits\FormHelperTrait;
+use App\Jobs\RegeneratePriceCache;
 use App\Models\UrlResearch;
 use App\Rules\ValidCron;
 use App\Services\AiService;
@@ -72,10 +73,26 @@ class AppSettingsPage extends SettingsPage
 
     public function save(): void
     {
+        $previousCurrency = self::defaultCurrency();
+
         parent::save();
 
         Cache::flush();
         Once::flush();
+
+        // Cached product prices are converted into the app currency.
+        if (self::defaultCurrency() !== $previousCurrency) {
+            RegeneratePriceCache::dispatch();
+        }
+    }
+
+    /**
+     * The saved default currency, read from the settings this page saves rather than
+     * SettingsHelper, which can hold a copy from earlier in the request.
+     */
+    protected static function defaultCurrency(): ?string
+    {
+        return data_get(AppSettings::new()->default_locale_settings, 'currency');
     }
 
     /**

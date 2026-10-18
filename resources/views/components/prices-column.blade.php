@@ -49,6 +49,11 @@
                                 (<x-price-factor-price :cache="$cache" />)
                             </span>
                         @endif
+                        @if ($cache->hasVisiblePrice() && $cache->isConverted())
+                            <span class="text-xs text-inherit">
+                                (<x-store-currency-price :cache="$cache" />)
+                            </span>
+                        @endif
                         {{ '@'.$cache->getStoreName() }}
                         @if ($cache->isUnavailable())
                             <span style="{{ Filament\Support\get_color_css_variables($cache->getStockStatusColor(), shades: [50, 400, 500]) }}" class="text-xs text-custom-500 dark:text-custom-400 bg-custom-50 dark:bg-custom-400/10 font-medium ml-1 rounded-md p-1">{{ __($cache->getStockStatusLabel()) }}</span>

@@ -12,7 +12,7 @@ class RegeneratePriceCache extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = self::COMMAND;
+    protected $signature = self::COMMAND.' {--product=* : Only regenerate these product IDs}';
 
     /**
      * The console command description.
@@ -24,7 +24,9 @@ class RegeneratePriceCache extends Command
      */
     public function handle()
     {
-        Product::all()
+        Product::query()
+            ->when($this->option('product'), fn ($query, array $ids) => $query->whereKey($ids))
+            ->get()
             ->each(fn (Product $product) => $this->components->task(
                 '(ID: '.$product->getKey().') '.$product->title_short,
                 fn () => tap($product, function (Product $product): void {

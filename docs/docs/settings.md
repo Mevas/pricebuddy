@@ -34,8 +34,30 @@ Eg. `en_US` for English (United States) or `fr_FR` for French.
 **Currency** - This should match the currency of the stores you are scraping.
 Eg. `USD` for US Dollars or `EUR` for Euros.
 
-NOTE: You can also override this per store, but mixing currencies on the same
-product results in incorrect price comparisons and aggregates.
+You can also override this per store. The default currency is also the currency
+products are compared in.
+
+### Stores in other currencies
+
+A product can be tracked at stores that use different currencies. Each store's
+prices are converted into the default currency, so the cheapest store, the
+current price, min/avg/max, insights and price alerts all compare like with like.
+Store prices are kept as scraped; a converted price also shows the price at the
+store, for example `RON 125.33 (€23.51 at the store)`. Set price alert targets
+in the default currency.
+
+Rates are the latest European Central Bank reference rates from
+[Frankfurter](https://frankfurter.dev). While at least one store uses another
+currency, PriceBuddy checks for new rates every hour and stores them; when they
+change, the prices of products sold in another currency are recalculated, price
+history included. If a check fails, the stored rates are kept. If there is no
+rate for a currency (it is not covered, or rates have not been fetched yet), that
+store's prices are left in its own currency and are not converted. To fetch
+rates straight away, for example right after setting up the first store in
+another currency, run `php artisan buddy:update-exchange-rates`.
+
+Set the `EXCHANGE_RATES_URL` environment variable to use another
+Frankfurter-compatible endpoint, or to an empty value to turn conversion off.
 
 Each store saves its own locale and currency when it is created. If you change
 the default later, existing stores keep their old values. To update them, go to

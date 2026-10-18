@@ -330,7 +330,7 @@ class StoreResource extends Resource
         return BulkAction::make('setLocale')
             ->label('Set locale and currency')
             ->icon('heroicon-o-currency-dollar')
-            ->modalDescription('The locale controls how prices are read from the page. The currency is used to display prices, including prices that are already saved. Saved prices keep their numbers and are not converted.')
+            ->modalDescription('The locale controls how prices are read from the page. The currency is the currency of the store\'s prices, including prices that are already saved: they keep their numbers and are relabelled, not converted. Products convert each store\'s prices into the default currency to compare them.')
             ->form(AppSettingsPage::getLocaleFormFields('locale_settings'))
             ->action(function (Collection $records, array $data): void {
                 foreach ($records as $store) {

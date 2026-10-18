@@ -41,6 +41,16 @@ class Price extends Model
         });
     }
 
+    /**
+     * This price in the app currency, so it compares with prices from other stores.
+     */
+    public function convertedPrice(): float
+    {
+        $price = (float) $this->price;
+
+        return $this->url?->store?->currencyConversion()->convert($price) ?? $price;
+    }
+
     /***************************************************
      * Relationships.
      **************************************************/

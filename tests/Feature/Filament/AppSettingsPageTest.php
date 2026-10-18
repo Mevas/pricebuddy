@@ -3,9 +3,12 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\AppSettingsPage;
+use App\Jobs\RegeneratePriceCache;
 use App\Models\User;
+use App\Services\Helpers\SettingsHelper;
 use App\Settings\AppSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -89,6 +92,32 @@ class AppSettingsPageTest extends TestCase
             ])
             ->call('save')
             ->assertHasNoFormErrors(['scrape_retry_max_attempts', 'scrape_retry_delay_minutes']);
+    }
+
+    public function test_changing_the_default_currency_regenerates_price_caches(): void
+    {
+        Queue::fake();
+        SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'USD']);
+
+        Livewire::test(AppSettingsPage::class)
+            ->fillForm(['default_locale_settings.currency' => 'EUR'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Queue::assertPushed(RegeneratePriceCache::class);
+    }
+
+    public function test_saving_without_a_currency_change_keeps_price_caches(): void
+    {
+        Queue::fake();
+        SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'USD']);
+
+        Livewire::test(AppSettingsPage::class)
+            ->fillForm(['log_retention_days' => 90])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Queue::assertNotPushed(RegeneratePriceCache::class);
     }
 
     public function test_retry_settings_reject_values_below_one(): void

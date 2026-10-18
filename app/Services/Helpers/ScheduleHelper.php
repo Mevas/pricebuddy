@@ -4,6 +4,7 @@ namespace App\Services\Helpers;
 
 use App\Console\Commands\FetchAll;
 use App\Console\Commands\FetchDue;
+use App\Console\Commands\UpdateExchangeRates;
 use App\Models\UrlResearch;
 use Illuminate\Console\Scheduling\Schedule;
 use Lorisleiva\CronTranslator\CronTranslator;
@@ -47,6 +48,8 @@ class ScheduleHelper
             // lock so a crashed/unclean run can't block the next minute for the
             // 24h default.
             ->withoutOverlapping(5);
+        // Refresh exchange rates for stores in another currency
+        $schedule->command(UpdateExchangeRates::COMMAND)->hourly();
         // Prune old log messages
         $schedule->command('model:prune', ['--model' => [LogMessage::class]])->daily();
         // Prune search research results.

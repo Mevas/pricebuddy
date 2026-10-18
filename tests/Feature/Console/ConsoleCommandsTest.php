@@ -49,6 +49,17 @@ class ConsoleCommandsTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_regenerate_price_cache_command_can_limit_to_products(): void
+    {
+        $products = Product::factory()->count(2)->create(['price_cache' => [], 'insights_cache' => []]);
+
+        $this->artisan(RegeneratePriceCache::COMMAND, ['--product' => [$products[0]->id]])
+            ->assertExitCode(0);
+
+        $this->assertNotSame([], $products[0]->fresh()->insights_cache);
+        $this->assertSame([], $products[1]->fresh()->insights_cache);
+    }
+
     public function test_regenerate_price_cache_command_handles_empty_products()
     {
         $this->artisan(RegeneratePriceCache::COMMAND)

@@ -170,8 +170,9 @@ Eg. `en_US` for English (United States) or `fr_FR` for French.
 **Currency** - This should match the currency of the store.
 Eg. `USD` for US Dollars or `EUR` for Euros.
 
-NOTE: Mixing currencies on the same product results in incorrect price 
-comparisons and aggregates.
+A product can be tracked at stores with different currencies. Their prices are
+compared in the default currency; see
+[Stores in other currencies](/settings.html#stores-in-other-currencies).
 
 To change the locale and currency of many stores at once, select them in the
 store list and use the bulk action **Set locale and currency**. The store list

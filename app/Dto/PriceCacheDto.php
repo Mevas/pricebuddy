@@ -4,7 +4,6 @@ namespace App\Dto;
 
 use App\Enums\StockStatus;
 use App\Enums\Trend;
-use App\Models\Price;
 use App\Models\Product;
 use App\Services\Helpers\CurrencyHelper;
 use Carbon\Carbon;
@@ -43,6 +42,10 @@ class PriceCacheDto
 
     private StockStatus $stockStatus;
 
+    private string $storeCurrency;
+
+    private float $storePrice;
+
     public function __construct(
         float $price,
         ?int $storeId = null,
@@ -58,6 +61,8 @@ class PriceCacheDto
         float $priceFactor = 1,
         ?string $unitOfMeasure = self::DEFAULT_UNIT_OF_MEASURE,
         StockStatus|string|null $availability = null,
+        ?string $storeCurrency = null,
+        ?float $storePrice = null,
     ) {
         $this->storeId = $storeId;
         $this->storeName = $storeName;
@@ -75,6 +80,8 @@ class PriceCacheDto
         $this->stockStatus = $availability instanceof StockStatus
             ? $availability
             : StockStatus::fromScrapedValue($availability);
+        $this->storeCurrency = $storeCurrency ?? $this->currency;
+        $this->storePrice = $storePrice ?? $price;
     }
 
     // Getters
@@ -136,6 +143,22 @@ class PriceCacheDto
     public function getUnitPriceFormatted(): string
     {
         return CurrencyHelper::toString($this->getUnitPrice(), locale: $this->locale, iso: $this->currency);
+    }
+
+    /**
+     * Whether the prices were converted from the store's own currency.
+     */
+    public function isConverted(): bool
+    {
+        return $this->storeCurrency !== $this->currency;
+    }
+
+    /**
+     * The price as the store shows it, in the store's own currency.
+     */
+    public function getStorePriceFormatted(): string
+    {
+        return CurrencyHelper::toString($this->storePrice, locale: $this->locale, iso: $this->storeCurrency);
     }
 
     public function getUnitOfMeasure(): string
@@ -246,9 +269,7 @@ class PriceCacheDto
             return false;
         }
 
-        return $product->shouldNotifyOnPrice(new Price([
-            'price' => $this->getPrice(),
-        ]));
+        return $product->shouldNotifyOnPrice($this->getPrice());
     }
 
     public static function fromArray(array $data): self
@@ -268,6 +289,8 @@ class PriceCacheDto
             $data['price_factor'] ?? 1,
             $data['unit_of_measure'] ?? null,
             $data['availability'] ?? null,
+            $data['store_currency'] ?? null,
+            $data['store_price'] ?? null,
         );
     }
 
@@ -293,6 +316,8 @@ class PriceCacheDto
             'successful_last_scrape' => $this->isLastScrapeSuccessful(),
             'locale' => $this->locale,
             'currency' => $this->currency,
+            'store_currency' => $this->storeCurrency,
+            'store_price' => $this->storePrice,
             'unit_of_measure' => $this->getUnitOfMeasure(),
             'availability' => $this->stockStatus === StockStatus::InStock ? null : $this->stockStatus->value,
         ];
