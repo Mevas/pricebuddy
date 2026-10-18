@@ -67,11 +67,10 @@ final class CurrencyConversion
     /**
      * SQL for $priceSql converted per store, the same way as convert(): a store with a
      * conversion is multiplied by its rate in decimal arithmetic and rounded to cents, and
-     * every other store keeps the price as scraped.
+     * every other store has no rate, so it keeps the price as scraped.
      *
      * @param  array<int, self>  $byStore  conversions keyed by store ID
-     * @param  string  $priceSql  pasted once per converted store and once more for the
-     *                            others, so it must not contain ? placeholders
+     * @param  string  $priceSql  pasted twice, so it must not contain ? placeholders
      * @return array{string, array<int, int|string>} the SQL and its bindings
      */
     private static function toSql(array $byStore, string $priceSql, string $storeColumn): array
@@ -83,15 +82,14 @@ final class CurrencyConversion
         }
 
         $amount = 'CAST('.$priceSql.' AS DECIMAL(20, '.self::AMOUNT_SCALE.'))';
-        $rate = 'CAST(? AS DECIMAL(20, '.self::RATE_SCALE.'))';
-        $when = " WHEN ? THEN ROUND({$amount} * {$rate}, 2)";
+        $rate = "CASE {$storeColumn}".str_repeat(' WHEN ? THEN CAST(? AS DECIMAL(20, '.self::RATE_SCALE.'))', count($converted)).' END';
         $bindings = [];
 
         foreach ($converted as $storeId => $conversion) {
             array_push($bindings, $storeId, $conversion->rateAsDecimal());
         }
 
-        return ["CASE {$storeColumn}".str_repeat($when, count($converted))." ELSE {$priceSql} END", $bindings];
+        return ["COALESCE(ROUND({$amount} * {$rate}, 2), {$priceSql})", $bindings];
     }
 
     /**
@@ -100,8 +98,7 @@ final class CurrencyConversion
      * division is in floating point, which PHP and every database round alike.
      *
      * @param  array<int, self>  $byStore  conversions keyed by store ID
-     * @param  string  $priceSql  pasted once per converted store and once more for the
-     *                            others, so it must not contain ? placeholders
+     * @param  string  $priceSql  pasted twice, so it must not contain ? placeholders
      * @return array{string, array<int, int|string>} the SQL and its bindings
      */
     public static function toSqlPerUnit(array $byStore, string $priceSql, string $storeColumn, string $factorColumn): array

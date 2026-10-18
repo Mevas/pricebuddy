@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Casts\StoreScraperStrategySetCast;
-use App\Dto\AdditionalCost;
 use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
@@ -47,7 +46,8 @@ use Spatie\Sluggable\SlugOptions;
  * @property ?User $user
  * @property ?string $cookies
  * @property ?float $additional_cost
- * @property ?float $additional_cost_free_from
+ * @property ?float $additional_cost_reduced_from
+ * @property ?float $additional_cost_reduced
  */
 class Store extends Model
 {
@@ -66,7 +66,8 @@ class Store extends Model
         'user_id',
         'cookies',
         'additional_cost',
-        'additional_cost_free_from',
+        'additional_cost_reduced_from',
+        'additional_cost_reduced',
     ];
 
     protected function casts(): array
@@ -76,7 +77,8 @@ class Store extends Model
             'scrape_strategy' => StoreScraperStrategySetCast::class,
             'settings' => 'array',
             'additional_cost' => 'float',
-            'additional_cost_free_from' => 'float',
+            'additional_cost_reduced_from' => 'float',
+            'additional_cost_reduced' => 'float',
         ];
     }
 
@@ -114,7 +116,7 @@ class Store extends Model
 
             // Cached product prices include the store's additional cost and are converted
             // from its currency, so they are stale as soon as either changes.
-            if ($store->currencyWasChanged() || $store->wasChanged(['additional_cost', 'additional_cost_free_from'])) {
+            if ($store->currencyWasChanged() || $store->wasChanged(['additional_cost', 'additional_cost_reduced_from', 'additional_cost_reduced'])) {
                 RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
             }
         });
@@ -315,14 +317,6 @@ class Store extends Model
     public function currencyConversion(): CurrencyConversion
     {
         return app(ExchangeRateService::class)->toAppCurrency($this->currency);
-    }
-
-    /**
-     * What buying from this store costs on top of a price, in the store's currency.
-     */
-    public function additionalCost(): AdditionalCost
-    {
-        return new AdditionalCost($this->additional_cost ?? 0, $this->additional_cost_free_from);
     }
 
     public function hasDomain($domain): bool

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Dto\ListingPricing;
 use App\Events\PriceCreatedEvent;
 use Carbon\Carbon;
 use Database\Factories\UrlFactory;
@@ -49,7 +50,7 @@ class Price extends Model
     {
         $price = (float) $this->price;
 
-        return $this->url?->pricing()->total($price) ?? $price;
+        return $this->url ? ListingPricing::forUrl($this->url)->total($price) : $price;
     }
 
     /***************************************************

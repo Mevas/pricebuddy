@@ -322,16 +322,12 @@ class Product extends Model
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
-        [$unitPrice, $bindings] = ListingPricing::toSql(
-            Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all(),
-            'prices.price',
-            'urls.store_id',
-            'prices.price_factor',
-        );
+        $conversions = Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all();
 
-        return $query->whereHas('prices', function ($priceQuery) use ($days, $unitPrice, $bindings) {
+        return $query->whereHas('prices', function (EloquentBuilder $priceQuery) use ($days, $conversions) {
+            [$unitPrice, $bindings] = ListingPricing::toSql($priceQuery, $conversions);
+
             $priceQuery
-                ->leftJoin('stores', 'stores.id', '=', 'urls.store_id')
                 ->where('prices.created_at', '>=', Carbon::now()->subDays($days)->startOfDay())
                 ->where('prices.created_at', '<', Carbon::now()->startOfDay())
                 ->where('prices.price', '>', 0)
@@ -635,7 +631,7 @@ class Product extends Model
                 $urlHistory = $history->get($url->getKey(), collect());
                 /** @var Store $store */
                 $store = $url->store;
-                $pricing = $url->pricing();
+                $pricing = ListingPricing::forUrl($url);
 
                 // Get last scraped price.
                 /** @var ?Price $lastScrapedPrice */
@@ -673,7 +669,7 @@ class Product extends Model
                     'currency' => $pricing->conversion->to,
                     'store_currency' => $pricing->conversion->from,
                     'store_price' => $lastScrapedPrice->price ?? 0,
-                    'additional_cost' => $pricing->additionalCost->on((float) ($lastScrapedPrice->price ?? 0)) ?: null,
+                    'additional_cost' => $pricing->costAt((float) ($lastScrapedPrice->price ?? 0)) ?: null,
                     'unit_of_measure' => $this->unit_of_measure,
                     'availability' => $url->getAvailabilityStatus()?->value,
                 ];
@@ -807,7 +803,7 @@ class Product extends Model
         // History is what buying cost in the app currency, so prices from every store compare.
         /** @var EloquentCollection<int, Url> $urls */
         $urls = $this->urls()->with('store')->whereIn('id', $prices->pluck('url_id')->unique())->get();
-        $pricings = $urls->mapWithKeys(fn (Url $url) => [$url->getKey() => $url->pricing()]);
+        $pricings = $urls->mapWithKeys(fn (Url $url) => [$url->getKey() => ListingPricing::forUrl($url)]);
 
         return $prices
             ->groupBy('url_id')

@@ -81,9 +81,9 @@ class ProductAdditionalCostTest extends TestCase
         $this->assertSame("RON\u{a0}15.00", $ron->getAdditionalCostFormatted());
     }
 
-    public function test_the_cost_is_waived_from_the_free_from_price(): void
+    public function test_the_cost_is_free_from_the_reduced_from_price(): void
     {
-        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_free_from' => 150]);
+        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_reduced_from' => 150]);
 
         $product = $this->makeProduct(ronPrices: [160, 150, 140], eurPrices: []);
 
@@ -94,14 +94,27 @@ class ProductAdditionalCostTest extends TestCase
         $this->assertSame("RON\u{a0}15.00", $this->cacheFor($product, 'ron-store.test')->getAdditionalCostFormatted());
     }
 
+    public function test_the_cost_can_be_reduced_rather_than_free(): void
+    {
+        // 8.99 EUR shipping, or 4.99 EUR from 150 EUR.
+        $this->store('eur-store.test')->update(['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99]);
+
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [160, 140]);
+        $url = $product->urls->firstWhere('url', self::EUR_URL);
+
+        // (160 + 4.99) and (140 + 8.99) EUR at 5 RON each.
+        $this->assertSame([824.95, 744.95], $product->getPriceHistory()[$url->id]->values()->map(fn ($p) => (float) $p)->all());
+        $this->assertSame('€8.99', $this->cacheFor($product, 'eur-store.test')->getAdditionalCostFormatted());
+    }
+
     public function test_a_link_cost_replaces_the_store_cost(): void
     {
-        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_free_from' => 100]);
+        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_reduced_from' => 100]);
 
         $product = $this->makeProduct(ronPrices: [160], eurPrices: []);
         $url = $product->urls->firstWhere('url', self::RON_URL);
 
-        // The link's own cost applies whatever the price; the store's free-from does not.
+        // The link's own cost applies whatever the price; the store's reduction does not.
         $url->update(['additional_cost' => 20]);
         $this->assertEqualsWithDelta(180.0, $product->refresh()->current_price, 0.001);
 
@@ -110,7 +123,7 @@ class ProductAdditionalCostTest extends TestCase
         $this->assertEqualsWithDelta(160.0, $product->refresh()->current_price, 0.001);
 
         // Without its own cost the link uses the store's again.
-        $this->store('ron-store.test')->update(['additional_cost_free_from' => null]);
+        $this->store('ron-store.test')->update(['additional_cost_reduced_from' => null]);
         $url->update(['additional_cost' => null]);
         $this->assertEqualsWithDelta(175.0, $product->refresh()->current_price, 0.001);
     }
@@ -176,7 +189,9 @@ class ProductAdditionalCostTest extends TestCase
 
         $this->store('ron-store.test')->update(['additional_cost' => 10]);
 
-        $this->assertEqualsWithDelta(159.0, $product->refresh()->current_price, 0.001);
+        $product->refresh();
+        $this->assertEqualsWithDelta(159.0, $product->current_price, 0.001);
+        $this->assertEqualsWithDelta(159.0, $product->insights_cache['bestPrice'], 0.001);
     }
 
     public function test_changing_a_link_cost_rebuilds_its_product_cache(): void
@@ -189,7 +204,7 @@ class ProductAdditionalCostTest extends TestCase
         Queue::assertPushed(RegeneratePriceCache::class, fn (RegeneratePriceCache $job) => $job->productIds === [$product->id]);
 
         Queue::fake();
-        $url->update(['price_factor' => 1]);
+        $url->update(['price_factor' => 2]);
         Queue::assertNotPushed(RegeneratePriceCache::class);
     }
 
@@ -205,11 +220,11 @@ class ProductAdditionalCostTest extends TestCase
 
     public function test_lowest_price_in_days_includes_the_cost(): void
     {
-        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_free_from' => 150]);
+        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_reduced_from' => 150]);
 
-        // The price fell but no longer ships free, so the total is unchanged at 160.
+        // The price fell below the reduced-from, so the total is unchanged at 160.
         $unchanged = $this->makeProduct(ronPrices: [160, 160, 145], eurPrices: []);
-        // The price rose past the free-from, so the total fell from 164 to 151.
+        // The price rose past the reduced-from, so the total fell from 164 to 151.
         $dropped = $this->makeProduct(ronPrices: [149, 149, 151], eurPrices: []);
 
         $matching = Product::query()->lowestPriceInDays(7)->pluck('id');
@@ -247,6 +262,29 @@ class ProductAdditionalCostTest extends TestCase
         $product->urls->firstWhere('url', self::RON_URL)->update(['additional_cost' => 0]);
 
         $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_lowest_price_in_days_puts_the_link_cost_before_the_store_reduction(): void
+    {
+        // From 100 the store charges 5, but this link ships free whatever the price.
+        $this->store('ron-store.test')->update(['additional_cost' => 15, 'additional_cost_reduced_from' => 100, 'additional_cost_reduced' => 5]);
+        $product = $this->makeProduct(ronPrices: [160, 160, 160], eurPrices: []);
+
+        $product->urls->firstWhere('url', self::RON_URL)->update(['additional_cost' => 0]);
+
+        $this->assertEqualsWithDelta(160.0, $product->refresh()->current_price, 0.001);
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_moving_a_link_to_another_store_clears_its_own_cost(): void
+    {
+        $product = $this->makeProduct(ronPrices: [149], eurPrices: []);
+        $url = $product->urls->firstWhere('url', self::RON_URL);
+        $url->update(['additional_cost' => 5]);
+
+        $url->update(['store_id' => $this->store('eur-store.test')->id]);
+
+        $this->assertNull($url->refresh()->additional_cost);
     }
 
     public function test_notification_target_includes_the_cost(): void

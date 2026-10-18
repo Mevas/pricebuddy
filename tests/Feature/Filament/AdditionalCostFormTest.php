@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Resources\ProductResource\Widgets\ProductUrlStats;
 use App\Filament\Resources\ProductResource\Widgets\UrlsTableWidget;
 use App\Filament\Resources\StoreResource\Pages\EditStore;
 use App\Models\Product;
@@ -31,32 +32,43 @@ class AdditionalCostFormTest extends TestCase
     {
         $store = Store::factory()->create(['settings' => ['scraper_service' => 'http']]);
 
-        $this->fillStoreForm($store, ['additional_cost' => 8.99, 'additional_cost_free_from' => 50])
+        $this->fillStoreForm($store, ['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99])
             ->assertHasNoFormErrors();
 
         $store->refresh();
         $this->assertSame(8.99, $store->additional_cost);
-        $this->assertSame(50.0, $store->additional_cost_free_from);
+        $this->assertSame(150.0, $store->additional_cost_reduced_from);
+        $this->assertSame(4.99, $store->additional_cost_reduced);
     }
 
     public function test_store_form_saves_an_empty_additional_cost_as_none(): void
     {
-        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http'], 'additional_cost' => 5, 'additional_cost_free_from' => 50]);
+        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http'], 'additional_cost' => 5, 'additional_cost_reduced_from' => 50, 'additional_cost_reduced' => 1]);
 
-        $this->fillStoreForm($store, ['additional_cost' => null, 'additional_cost_free_from' => null])
+        $this->fillStoreForm($store, ['additional_cost' => null, 'additional_cost_reduced_from' => null, 'additional_cost_reduced' => null])
             ->assertHasNoFormErrors();
 
         $store->refresh();
         $this->assertNull($store->additional_cost);
-        $this->assertNull($store->additional_cost_free_from);
+        $this->assertNull($store->additional_cost_reduced_from);
+        $this->assertNull($store->additional_cost_reduced);
     }
 
     public function test_store_form_rejects_a_negative_additional_cost(): void
     {
         $store = Store::factory()->create(['settings' => ['scraper_service' => 'http']]);
 
-        $this->fillStoreForm($store, ['additional_cost' => -1, 'additional_cost_free_from' => -1])
-            ->assertHasFormErrors(['additional_cost', 'additional_cost_free_from']);
+        $this->fillStoreForm($store, ['additional_cost' => -1, 'additional_cost_reduced_from' => -1, 'additional_cost_reduced' => -1])
+            ->assertHasFormErrors(['additional_cost', 'additional_cost_reduced_from', 'additional_cost_reduced']);
+    }
+
+    public function test_store_form_rejects_a_reduction_from_zero(): void
+    {
+        // A reduction from 0 would apply to every price, the opposite of "no reduction".
+        $store = Store::factory()->create(['settings' => ['scraper_service' => 'http']]);
+
+        $this->fillStoreForm($store, ['additional_cost' => 15, 'additional_cost_reduced_from' => 0])
+            ->assertHasFormErrors(['additional_cost_reduced_from']);
     }
 
     public function test_link_form_saves_its_own_additional_cost(): void
@@ -70,6 +82,29 @@ class AdditionalCostFormTest extends TestCase
         $this->assertNull($url->refresh()->additional_cost);
     }
 
+    public function test_link_form_drops_its_own_cost_when_the_link_moves_to_another_store(): void
+    {
+        $url = $this->makeUrl();
+        $url->update(['additional_cost' => 5]);
+        Store::factory()->createOne(['domains' => [['domain' => 'example2.com']]]);
+
+        $this->editUrl($url, ['url' => 'https://example2.com/product', 'additional_cost' => 5])->assertHasNoTableActionErrors();
+
+        $this->assertSame('https://example2.com/product', $url->refresh()->url);
+        $this->assertNull($url->additional_cost);
+    }
+
+    public function test_product_page_link_form_saves_its_own_additional_cost(): void
+    {
+        $url = $this->makeUrl();
+
+        Livewire::test(ProductUrlStats::class, ['record' => $url->product])
+            ->callAction('edit', data: ['url' => $url->url, 'price_factor' => 1, 'additional_cost' => 4.5], arguments: ['url' => $url->getKey()])
+            ->assertHasNoActionErrors();
+
+        $this->assertSame(4.5, $url->refresh()->additional_cost);
+    }
+
     public function test_link_form_rejects_a_negative_additional_cost(): void
     {
         $this->editUrl($this->makeUrl(), ['additional_cost' => -1])
@@ -78,7 +113,7 @@ class AdditionalCostFormTest extends TestCase
 
     public function test_store_export_leaves_out_the_additional_cost(): void
     {
-        $store = Store::factory()->create(['additional_cost' => 8.99, 'additional_cost_free_from' => 50]);
+        $store = Store::factory()->create(['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99]);
 
         $this->assertStringNotContainsString(
             'additional_cost',

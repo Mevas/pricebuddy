@@ -239,22 +239,45 @@ class StoreApiTest extends TestCase
     {
         $store = Store::factory()->create(['user_id' => $this->user->id]);
 
-        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => 8.99, 'additional_cost_free_from' => 50])
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99])
             ->assertSuccessful()
-            ->assertJson(['data' => ['additional_cost' => 8.99, 'additional_cost_free_from' => 50]]);
+            ->assertJson(['data' => ['additional_cost' => 8.99, 'additional_cost_reduced_from' => 150, 'additional_cost_reduced' => 4.99]]);
 
         $this->putJson("/api/stores/{$store->id}", ['additional_cost' => null])->assertSuccessful();
         $this->assertNull($store->refresh()->additional_cost);
-        $this->assertSame(50.0, $store->additional_cost_free_from);
+        $this->assertSame(150.0, $store->additional_cost_reduced_from);
+    }
+
+    public function test_can_create_a_store_with_an_additional_cost(): void
+    {
+        $this->postJson('/api/stores', [
+            'name' => 'Cost Store',
+            'domains' => [['domain' => 'cost-store.test']],
+            'scrape_strategy' => collect(['title', 'price', 'image'])->mapWithKeys(fn ($s) => [$s => ['type' => 'selector', 'value' => 'h1']])->all(),
+            'settings' => ['scraper_service' => ScraperService::Http->value],
+            'additional_cost' => 8.99,
+        ])->assertCreated();
+
+        $this->assertSame(8.99, Store::query()->where('name', 'Cost Store')->value('additional_cost'));
     }
 
     public function test_additional_cost_must_not_be_negative(): void
     {
         $store = Store::factory()->create(['user_id' => $this->user->id]);
 
-        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => -1, 'additional_cost_free_from' => 'free'])
+        $this->putJson("/api/stores/{$store->id}", ['additional_cost' => -1, 'additional_cost_reduced_from' => 0, 'additional_cost_reduced' => 'free'])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['additional_cost', 'additional_cost_free_from']);
+            ->assertJsonValidationErrors(['additional_cost', 'additional_cost_reduced_from', 'additional_cost_reduced']);
+    }
+
+    public function test_sparse_fieldset_can_name_the_additional_cost(): void
+    {
+        $store = Store::factory()->create(['user_id' => $this->user->id, 'additional_cost' => 8.99]);
+
+        $this->getJson('/api/stores?fields[stores]=id,additional_cost,additional_cost_reduced_from,additional_cost_reduced')
+            ->assertSuccessful()
+            ->assertJsonPath('data.0.id', $store->id)
+            ->assertJsonPath('data.0.additional_cost', 8.99);
     }
 
     public function test_create_store_validation_fails_with_invalid_data(): void

@@ -144,7 +144,7 @@ class StoreResource extends Resource
 
                 Section::make('Additional cost')
                     ->description(__('What buying from this store costs on top of the price, such as shipping, in the store\'s currency. It is added to every price at this store before prices are compared.'))
-                    ->columns(2)
+                    ->columns(3)
                     ->schema([
                         TextInput::make('additional_cost')
                             ->label('Additional cost')
@@ -152,12 +152,18 @@ class StoreResource extends Resource
                             ->minValue(0)
                             ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
                             ->hintIcon(Icons::Help->value, 'For example shipping or a payment fee. Leave empty if there is none. A product link can set its own cost instead'),
-                        TextInput::make('additional_cost_free_from')
-                            ->label('Free from')
+                        TextInput::make('additional_cost_reduced_from')
+                            ->label('Reduced from')
+                            ->numeric()
+                            ->rule('gt:0')
+                            ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
+                            ->hintIcon(Icons::Help->value, 'From this price the cost is reduced, like free or cheaper shipping over a minimum order. Leave empty if it never is'),
+                        TextInput::make('additional_cost_reduced')
+                            ->label('Reduced cost')
                             ->numeric()
                             ->minValue(0)
                             ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
-                            ->hintIcon(Icons::Help->value, 'No additional cost when the price is at least this much, like free shipping over a minimum order. Leave empty if it always applies'),
+                            ->hintIcon(Icons::Help->value, 'The cost from that price. Leave empty if it is free'),
                     ]),
 
                 Section::make('Cookies')->schema([

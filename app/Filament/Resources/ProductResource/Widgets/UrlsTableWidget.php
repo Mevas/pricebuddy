@@ -2,10 +2,9 @@
 
 namespace App\Filament\Resources\ProductResource\Widgets;
 
+use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Models\Product;
 use App\Models\Url;
-use App\Rules\StoreUrl;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -50,43 +49,17 @@ class UrlsTableWidget extends BaseWidget
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
-                    ->form([
-                        TextInput::make('url')
-                            ->label('URL')
-                            ->required()
-                            ->rules([new StoreUrl]),
-                        TextInput::make('price_factor')
-                            ->label('Price Factor')
-                            ->numeric()
-                            ->default(1)
-                            ->minValue(0.01)
-                            ->required(),
-                        TextInput::make('additional_cost')
-                            ->label('Additional cost')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix(fn (Url $record): ?string => $record->store?->currency)
-                            ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping. Leave empty to use the store\'s.')),
-                    ])
+                    ->form(fn (Url $record): array => UrlForm::schema($record))
                     ->using(function (Url $record, array $data): Url {
-                        // Validate/apply the URL change first so a failed change leaves
-                        // nothing persisted (changeUrl fails closed) before price_factor.
-                        if (trim($data['url']) !== $record->url && ! $record->changeUrl($data['url'])) {
+                        if (! UrlForm::save($record, $data)) {
                             throw ValidationException::withMessages([
                                 'url' => __('Unable to resolve a store or price for this URL'),
                             ]);
                         }
 
-                        $record->price_factor = (float) $data['price_factor'];
-                        $record->additional_cost = blank($data['additional_cost'] ?? null) ? null : (float) $data['additional_cost'];
-                        $record->save();
-
                         return $record;
                     })
-                    ->after(function (Url $record) {
-                        $record->syncStoredPricesForCurrentFactor();
-                        $record->product->updatePriceCache();
-
+                    ->after(function () {
                         Notification::make('url_updated')
                             ->title('URL updated')
                             ->success()

@@ -2,8 +2,6 @@
 
 namespace App\Models;
 
-use App\Dto\AdditionalCost;
-use App\Dto\CurrencyConversion;
 use App\Dto\ListingPricing;
 use App\Enums\StockStatus;
 use App\Events\AvailabilityChangedEvent;
@@ -58,6 +56,14 @@ class Url extends Model
     {
         static::saving(function (Url $url) {
             $url->url_normalized = static::normalizeForMatch((string) $url->url) ?: null;
+        });
+
+        // A link's own cost is what its seller charges, in its store's currency, so it does
+        // not carry over to another store.
+        static::updating(function (Url $url) {
+            if ($url->isDirty('store_id') && ! $url->isDirty('additional_cost')) {
+                $url->additional_cost = null;
+            }
         });
 
         static::updated(function (Url $url) {
@@ -149,7 +155,7 @@ class Url extends Model
         return Attribute::make(
             get: function (): string {
                 $price = (float) ($this->latestPrice()->first()->price ?? 0);
-                $cost = $this->additionalCost()->on($price);
+                $cost = ListingPricing::forUrl($this)->costAt($price);
                 $format = fn (float $amount): string => CurrencyHelper::toString($amount, locale: $this->store?->locale, iso: $this->store?->currency);
 
                 return $cost > 0
@@ -176,30 +182,6 @@ class Url extends Model
     /***************************************************
      * Helpers.
      **************************************************/
-
-    /**
-     * What buying from this link costs on top of a price: its own cost when it has one,
-     * otherwise its store's.
-     */
-    public function additionalCost(): AdditionalCost
-    {
-        if ($this->additional_cost !== null) {
-            return new AdditionalCost($this->additional_cost);
-        }
-
-        return $this->store?->additionalCost() ?? new AdditionalCost;
-    }
-
-    /**
-     * How this link's prices compare with other links' prices.
-     */
-    public function pricing(): ListingPricing
-    {
-        return new ListingPricing(
-            $this->store?->currencyConversion() ?? CurrencyConversion::identity(CurrencyHelper::getCurrency()),
-            $this->additionalCost(),
-        );
-    }
 
     /**
      * Build the normalised key used to decide whether two URLs point at the same
