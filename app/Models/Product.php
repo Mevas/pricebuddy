@@ -441,12 +441,19 @@ class Product extends Model
 
     /**
      * Does an available URL's retail price match notification, as the price alerts check
-     * each URL's retail price.
+     * each URL's retail price. Both targets are met at or below a price, so the lowest
+     * available price decides.
      */
     public function isNotifiedPrice(): Attribute
     {
         return Attribute::make(
-            get: fn ($value): bool => $this->getPriceCache()->contains(fn (PriceCacheDto $price) => $price->matchesNotification($this))
+            get: function ($value): bool {
+                $lowest = $this->getPriceCache()
+                    ->reject(fn (PriceCacheDto $price) => $price->isUnavailable())
+                    ->min(fn (PriceCacheDto $price) => $price->getPrice());
+
+                return $lowest !== null && $this->shouldNotifyOnPrice($lowest);
+            }
         )->shouldCache();
     }
 
@@ -775,7 +782,8 @@ class Product extends Model
     {
         $this->price_cache = $this->buildPriceCache()->toArray();
 
-        // current_price is read from the cache as stored, so the two always agree.
+        // current_price is read from the cache as stored, so the two always agree. The JSON
+        // keeps the unit price exact while serialize_precision is -1, PHP's default.
         // update() saves both.
         $this->update(['current_price' => $this->getCurrentPriceCache()?->getUnitPrice() ?? 0]);
     }

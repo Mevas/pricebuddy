@@ -3,6 +3,7 @@
 namespace App\Casts;
 
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
+use Illuminate\Contracts\Database\Eloquent\ComparesCastableAttributes;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @implements CastsAttributes<?float, float|int|string|null>
  */
-class ExactFloat implements CastsAttributes
+class ExactFloat implements CastsAttributes, ComparesCastableAttributes
 {
     /**
      * @param  array<string, mixed>  $attributes
@@ -31,5 +32,17 @@ class ExactFloat implements CastsAttributes
     public function set(Model $model, string $key, mixed $value, array $attributes): ?string
     {
         return $value === null ? null : sprintf('%.17h', (float) $value);
+    }
+
+    /**
+     * The same double is unchanged, however it was written, so it is not saved again.
+     */
+    public function compare(Model $model, string $key, mixed $firstValue, mixed $secondValue): bool
+    {
+        if ($firstValue === null || $secondValue === null) {
+            return $firstValue === $secondValue;
+        }
+
+        return (float) $firstValue === (float) $secondValue;
     }
 }
