@@ -34,8 +34,26 @@ Eg. `en_US` for English (United States) or `fr_FR` for French.
 **Currency** - This should match the currency of the stores you are scraping.
 Eg. `USD` for US Dollars or `EUR` for Euros.
 
-NOTE: You can also override this per store, but mixing currencies on the same
-product results in incorrect price comparisons and aggregates.
+You can also override this per store. The default currency is also the currency
+products are compared in.
+
+### Stores in other currencies
+
+A product can be tracked at stores that use different currencies. Each store's
+prices are converted into the default currency, so the cheapest store, the
+current price, min/avg/max, insights and price alerts all compare like with like.
+Store prices are kept as scraped; a converted price also shows the price at the
+store, for example `RON 125.33 (€23.51 at the store)`. Set price alert targets
+in the default currency.
+
+Rates are the latest European Central Bank reference rates from
+[Frankfurter](https://frankfurter.dev), fetched only when a store uses another
+currency, and cached for 12 hours. Price history is converted at the latest
+rate, so it shows how the store's own price moved. If no rate is available (for example the currency is not covered), that
+store's prices are left in its own currency and are not converted.
+
+Set the `EXCHANGE_RATES_URL` environment variable to use another
+Frankfurter-compatible endpoint, or to an empty value to turn conversion off.
 
 Each store saves its own locale and currency when it is created. If you change
 the default later, existing stores keep their old values. To update them, go to

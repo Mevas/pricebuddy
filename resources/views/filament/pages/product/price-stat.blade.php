@@ -110,6 +110,12 @@
         </div>
     @endif
 
+    @if ($priceCache->hasVisiblePrice() && $priceCache->isConverted())
+        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">
+            <x-store-currency-price :cache="$priceCache" />
+        </div>
+    @endif
+
     @if ($priceCache->isUnavailable() || ! $priceCache->isLastScrapeSuccessful() || $priceCache->matchesNotification($product))
         <div class="mt-2 pb-4 inline-flex gap-2">
             @if ($priceCache->isUnavailable())

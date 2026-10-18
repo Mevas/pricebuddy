@@ -50,6 +50,30 @@ class PriceCacheDtoTest extends TestCase
         $this->assertSame('items', $dto->getUnitOfMeasurePlural());
     }
 
+    public function test_converted_price_shows_the_store_price(): void
+    {
+        $dto = PriceCacheDto::fromArray([
+            'price' => 125.0,
+            'locale' => 'en',
+            'currency' => 'RON',
+            'store_currency' => 'EUR',
+            'exchange_rate' => 5,
+        ]);
+
+        $this->assertTrue($dto->isConverted());
+        $this->assertSame('€25.00', $dto->getStorePriceFormatted());
+        $this->assertSame('EUR', $dto->toArray()['store_currency']);
+        $this->assertSame(5.0, $dto->toArray()['exchange_rate']);
+    }
+
+    public function test_cache_entries_without_conversion_details_are_not_converted(): void
+    {
+        $dto = PriceCacheDto::fromArray(['price' => 10.0, 'locale' => 'en', 'currency' => 'USD']);
+
+        $this->assertFalse($dto->isConverted());
+        $this->assertSame('$10.00', $dto->getStorePriceFormatted());
+    }
+
     public function test_to_array_includes_unit_of_measure()
     {
         $dto = new PriceCacheDto(

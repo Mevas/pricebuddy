@@ -28,7 +28,7 @@ class PriceCreatedListener
 
         try {
             // Notify the user if the price is within the range.
-            if ($product->shouldNotifyOnPrice($event->price) && $url->shouldNotifyOnPrice($event->price)) {
+            if ($product->shouldNotifyOnPrice($event->price->convertedPrice()) && $url->shouldNotifyOnPrice($event->price)) {
                 $product->user?->notify(new PriceAlertNotification($url));
                 $event->price->update(['notified' => true]);
             }

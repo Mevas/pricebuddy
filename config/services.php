@@ -39,4 +39,10 @@ return [
         'token' => env('PUSHOVER_APP_TOKEN'),
     ],
 
+    'exchange_rates' => [
+        // Frankfurter-compatible "latest rates" endpoint, queried with ?base=<app currency>.
+        // Set to an empty value to disable conversion between store currencies.
+        'url' => env('EXCHANGE_RATES_URL', 'https://api.frankfurter.dev/v1/latest'),
+    ],
+
 ];

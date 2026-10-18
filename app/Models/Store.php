@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use App\Casts\StoreScraperStrategySetCast;
+use App\Dto\CurrencyConversion;
 use App\Dto\StoreScraperStrategySetDto;
 use App\Enums\ScraperService;
+use App\Services\ExchangeRateService;
 use App\Services\Helpers\CurrencyHelper;
 use Database\Factories\StoreFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -82,12 +84,34 @@ class Store extends Model
             // Delete URLs individually to trigger model events (which cascade delete prices).
             $store->urls->each->delete();
 
-            // Update price cache for all affected products.
-            $products->each(function (Product $product): void {
-                $product->updatePriceCache();
-                $product->updateInsightsCache();
-            });
+            self::refreshProductCaches($products);
         });
+
+        static::updated(function (Store $store) {
+            // Cached product prices are converted from the store currency, so they are
+            // stale as soon as it changes.
+            if ($store->currencyWasChanged()) {
+                self::refreshProductCaches($store->products()->get()->unique('id'));
+            }
+        });
+    }
+
+    /**
+     * @param  iterable<Product>  $products
+     */
+    protected static function refreshProductCaches(iterable $products): void
+    {
+        foreach ($products as $product) {
+            $product->updatePriceCache();
+            $product->updateInsightsCache();
+        }
+    }
+
+    protected function currencyWasChanged(): bool
+    {
+        $previous = data_get($this->getOriginal('settings'), 'locale_settings.currency', CurrencyHelper::getCurrency());
+
+        return $this->wasChanged('settings') && $previous !== $this->currency;
     }
 
     public function getSlugOptions(): SlugOptions
@@ -259,6 +283,14 @@ class Store extends Model
     /***************************************************
      * Helpers.
      **************************************************/
+
+    /**
+     * How this store's prices are expressed in the app currency.
+     */
+    public function currencyConversion(): CurrencyConversion
+    {
+        return ExchangeRateService::toAppCurrency($this->currency);
+    }
 
     public function hasDomain($domain): bool
     {

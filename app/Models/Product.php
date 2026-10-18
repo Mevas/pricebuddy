@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Dto\CurrencyConversion;
 use App\Dto\PriceCacheDto;
 use App\Enums\Statuses;
 use App\Enums\StockStatus;
@@ -422,7 +423,7 @@ class Product extends Model
     public function isNotifiedPrice(): Attribute
     {
         return Attribute::make(
-            get: fn ($value): bool => $this->shouldNotifyOnPrice(new Price(['price' => $this->current_price]))
+            get: fn ($value): bool => $this->shouldNotifyOnPrice((float) $this->current_price)
         );
     }
 
@@ -555,11 +556,14 @@ class Product extends Model
                 $urlHistory = $history->get($url->getKey(), collect());
                 /** @var Store $store */
                 $store = $url->store;
+                $conversion = $store->currencyConversion();
 
                 // Get last scraped price.
                 /** @var ?Price $lastScrapedPrice */
                 $lastScrapedPrice = $url->prices()->latest('id')->first();
                 $lastScrapedTimestamp = $lastScrapedPrice?->created_at;
+                $lastUnitPrice = $lastScrapedPrice?->unit_price;
+                $latestPrice = $urlHistory->isEmpty() ? 0 : $urlHistory->last();
 
                 // Build trend, current price vs average price (skip for URLs with no history).
                 $trend = $urlHistory->isEmpty()
@@ -577,13 +581,17 @@ class Product extends Model
                     'url_id' => $url->getKey(),
                     'url' => $url->buy_url,
                     'trend' => $trend,
-                    'price' => $urlHistory->isEmpty() ? 0 : $urlHistory->last(),
-                    'unit_price' => $lastScrapedPrice->unit_price ?? ($urlHistory->isEmpty() ? 0 : $urlHistory->last()),
+                    'price' => $latestPrice,
+                    'unit_price' => is_null($lastUnitPrice) ? $latestPrice : $conversion->convert($lastUnitPrice),
                     'price_factor' => ($f = $url->price_factor ?: 1) == (int) $f ? (int) $f : $f,
                     'history' => $urlHistory->toArray(),
                     'last_scrape' => $lastScrapedTimestamp?->toDateTimeString(),
                     'locale' => $store->locale,
-                    'currency' => $store->currency,
+                    // Prices above are in this currency; the store's own currency and the
+                    // rate used are kept so the price the store shows can be displayed too.
+                    'currency' => $conversion->to,
+                    'store_currency' => $conversion->from,
+                    'exchange_rate' => $conversion->rate,
                     'unit_of_measure' => $this->unit_of_measure,
                     'availability' => $url->getAvailabilityStatus()?->value,
                 ];
@@ -708,26 +716,39 @@ class Product extends Model
     {
         $priceColumn = $column === 'unit_price' ? 'unit_price' : 'price';
 
-        return $this->getAllPricesQuery()
+        $prices = $this->getAllPricesQuery()
             ->whereDate('prices.created_at', '>=', now()->subYear())
             ->where('prices.price', '>', 0)
             ->orderBy('prices.created_at')
+            ->get();
+
+        // History is expressed in the app currency so prices from every store compare.
+        $conversions = Store::query()
+            ->whereIn('id', $prices->pluck('store_id')->unique())
             ->get()
+            ->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()]);
+
+        return $prices
             ->groupBy('url_id')
-            ->mapWithKeys(function ($prices, int $storeId) use ($priceColumn) {
+            ->mapWithKeys(function ($prices, int $urlId) use ($priceColumn, $conversions) {
+                /** @var ?CurrencyConversion $conversion */
+                $conversion = $conversions->get($prices->first()->store_id);
+
                 // All price entries for the store.
                 $storeHistory = $prices->sortBy('created_at')
                     ->groupBy('created_at')
-                    ->mapWithKeys(fn ($prices, string $date) => [
-                        Carbon::parse($date)->toDateString() => $prices->pluck($priceColumn)->min(),
-                    ]);
+                    ->mapWithKeys(function ($prices, string $date) use ($priceColumn, $conversion) {
+                        $price = (float) $prices->pluck($priceColumn)->min();
+
+                        return [Carbon::parse($date)->toDateString() => $conversion?->convert($price) ?? $price];
+                    });
 
                 // If only one price, extend back one day.
                 if ($storeHistory->count() === 1) {
                     $storeHistory = $this->extendSinglePriceHistory($storeHistory);
                 }
 
-                return [$storeId => $storeHistory->sortKeys()];
+                return [$urlId => $storeHistory->sortKeys()];
             });
     }
 
@@ -756,12 +777,13 @@ class Product extends Model
         ]);
     }
 
-    public function shouldNotifyOnPrice(Price $price): bool
+    /**
+     * Whether a price, in the app currency, meets this product's notification target.
+     */
+    public function shouldNotifyOnPrice(float $price): bool
     {
-        $priceValue = (float) $price->price;
-
         // Check if price is less than notify price.
-        if (! empty($this->notify_price) && $priceValue <= (float) $this->notify_price) {
+        if (! empty($this->notify_price) && $price <= (float) $this->notify_price) {
             return true;
         }
 
@@ -769,7 +791,7 @@ class Product extends Model
             // Get first price.
             /** @var ?Price $firstPriceModel */
             $firstPriceModel = $this->prices()->oldest('prices.created_at')->first();
-            $firstPrice = $firstPriceModel?->price;
+            $firstPrice = $firstPriceModel?->convertedPrice();
 
             // No first price, can't calculate percent.
             if (is_null($firstPrice)) {
@@ -780,7 +802,7 @@ class Product extends Model
             $notifyPrice = $firstPrice - ($firstPrice * ($this->notify_percent / 100));
 
             // Check if percent is greater than notify percent.
-            return $priceValue <= $notifyPrice;
+            return $price <= $notifyPrice;
         }
 
         return false;
