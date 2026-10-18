@@ -322,7 +322,9 @@ returned correctly when other sparse fieldsets are used.
 
 ### Additional cost
 
-`additional_cost` and `additional_cost_free_from` are the store's
-[additional cost](/stores.html#additional-cost) and the price from which it is waived, in the
-store's currency, or `null` for none. Both are returned with the store and can be set with
-`POST /api/stores` and `PUT /api/stores/{id}`. Neither may be negative.
+`additional_cost`, `additional_cost_reduced_from` and `additional_cost_reduced` are the store's
+[additional cost](/stores.html#additional-cost), the price from which it is reduced, and the
+reduced cost, in the store's currency, or `null` for none (a `null` reduced cost is free). They
+are returned with the store, can be named in `fields[stores]`, and can be set with
+`POST /api/stores` and `PUT /api/stores/{id}`. None may be negative, and `additional_cost_reduced_from`
+must be above zero.

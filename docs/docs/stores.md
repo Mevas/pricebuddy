@@ -192,23 +192,28 @@ and price alerts all use the total you would pay. The product page shows the sto
 price with the cost, for example `€23.51 + €8.99 additional cost at the store`.
 
 **Additional cost** - Leave it empty if there is none.
-**Free from** - The store waives the cost when the price is at least this much, like
-free shipping over a minimum order. It is checked against the price of one listing,
-not an order of several items. Leave it empty if the cost always applies.
+**Reduced from** - From this price the cost is reduced, like free or cheaper shipping
+over a minimum order. It is checked against the price of one listing, not an order of
+several items. Leave it empty if the cost is never reduced.
+**Reduced cost** - The cost from that price. Leave it empty if it is free.
+
+For example, a store that charges €8.99 shipping, or €4.99 from €150, has an
+additional cost of `8.99`, reduced from `150` to `4.99`.
 
 The cost is paid once per listing: a pack with a
 [price factor](/products.html#unit-pricing) pays it once, and its unit price is the
 total divided by the factor.
 
 A product URL can have its own additional cost, for example when a marketplace seller
-charges different shipping. It replaces the store's cost and its free-from price. To
-set it, edit the URL on the product page; leave it empty to use the store's cost.
+charges different shipping. It replaces the store's cost, reduction and all. To set it,
+edit the URL on the product page; leave it empty to use the store's cost. Moving the URL
+to another store clears it.
 
 Stores are shared between all users, so a store's cost applies to everyone. Use a
 URL's own cost for a cost that only applies to you.
 
 Costs apply to the whole price history as they are now, so changing one recalculates
-the store's products. If you change a store's currency, its costs keep their amounts,
+the store's products in the background. If you change a store's currency, its costs keep their amounts,
 like saved prices. Costs are not included when you [share a store](#sharing-a-store).
 
 ## Cookies
