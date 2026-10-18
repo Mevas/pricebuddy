@@ -196,11 +196,43 @@ class ProductCurrencyConversionTest extends TestCase
         $this->assertEqualsWithDelta(0.039, $product->getPriceHistory('unit_price')[$eurUrl->id]->last(), 0.0000001);
     }
 
+    public function test_lowest_price_in_days_compares_converted_unit_prices(): void
+    {
+        // 3.90 EUR (19.50 RON) for 500 is below the 4.00 EUR (20 RON) for 500 seen this week.
+        $dropped = $this->makeProduct(ronPrices: [], eurPrices: [4.00, 4.00, 3.90], priceFactor: 500);
+        $unchanged = $this->makeProduct(ronPrices: [], eurPrices: [3.90, 3.90, 3.90], priceFactor: 500);
+
+        $matching = Product::query()->lowestPriceInDays(7)->pluck('id');
+
+        $this->assertTrue($matching->contains($dropped->id));
+        $this->assertFalse($matching->contains($unchanged->id));
+    }
+
+    public function test_an_unchanged_converted_unit_price_is_not_a_drop(): void
+    {
+        // 23.51 EUR at 5.0302 is 118.26 RON, and a seventh of that has no exact decimal value.
+        $this->useRate(5.0302);
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [23.51, 23.51, 23.51], priceFactor: 7);
+
+        $this->assertSame(118.26 / 7, $product->current_price);
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
     public function test_the_scope_keeps_local_prices_as_scraped(): void
     {
         // Another store converts prices, but this product's local prices are not rounded.
         $product = $this->makeProduct(ronPrices: [45.319, 45.319, 45.319], eurPrices: []);
 
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
+    }
+
+    public function test_the_scope_divides_local_prices_as_scraped(): void
+    {
+        // Another store converts prices; 45.319 / 7 is divided as scraped, and has no
+        // exact decimal value.
+        $product = $this->makeProduct(ronPrices: [45.319, 45.319, 45.319], eurPrices: [], priceFactor: 7);
+
+        $this->assertSame(45.319 / 7, $product->current_price);
         $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
@@ -316,16 +348,16 @@ class ProductCurrencyConversionTest extends TestCase
         ]);
     }
 
-    protected function makeProduct(array $ronPrices, array $eurPrices, array $attrs = []): Product
+    protected function makeProduct(array $ronPrices, array $eurPrices, array $attrs = [], float $priceFactor = 1): Product
     {
         $factory = Product::factory();
 
         if ($ronPrices !== []) {
-            $factory = $factory->addUrlWithPrices(self::RON_URL, $ronPrices);
+            $factory = $factory->addUrlWithPrices(self::RON_URL, $ronPrices, $priceFactor);
         }
 
         if ($eurPrices !== []) {
-            $factory = $factory->addUrlWithPrices(self::EUR_URL, $eurPrices);
+            $factory = $factory->addUrlWithPrices(self::EUR_URL, $eurPrices, $priceFactor);
         }
 
         return $factory->createOne(array_merge(['user_id' => User::factory()], $attrs))->refresh();

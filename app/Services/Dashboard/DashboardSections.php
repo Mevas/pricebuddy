@@ -63,7 +63,7 @@ class DashboardSections
             'atLowest' => $products->filter(fn (Product $p): bool => $p->trend === Trend::Lowest->value)->count(),
             'belowAverage' => $products->filter(fn (Product $p): bool => in_array($p->trend, [Trend::Down->value, Trend::Lowest->value], true))->count(),
             'outOfStock' => $products->filter(fn (Product $p): bool => $this->isOutOfStock($p))->count(),
-            'potentialSavings' => round($products->sum(fn (Product $p): float => max(0, $p->getPriceCacheAggregate('avg') - $p->current_price)), 2),
+            'potentialSavings' => round($products->sum(fn (Product $p): float => max(0, $this->belowAverage($p))), 2),
         ];
     }
 
@@ -95,7 +95,7 @@ class DashboardSections
 
         return $this->trackedProducts()
             ->filter(fn (Product $p): bool => $droppedIds->contains($p->id))
-            ->sortByDesc(fn (Product $p): float => $p->getPriceCacheAggregate('avg') - $p->current_price)
+            ->sortByDesc(fn (Product $p): float => $this->belowAverage($p))
             ->values()
             ->take(self::RECENTLY_DROPPED_LIMIT);
     }
@@ -118,6 +118,16 @@ class DashboardSections
             ->filter(fn (Product $p): bool => $this->isTracked($p) && ! $p->is_last_scrape_successful)
             ->values()
             ->take(self::NEEDS_ATTENTION_LIMIT);
+    }
+
+    /**
+     * How far the current price is below the product's average, for the pack it is sold in.
+     */
+    private function belowAverage(Product $p): float
+    {
+        $units = $p->getCurrentPriceCache()?->getPriceFactor() ?: 1;
+
+        return ($p->getPriceCacheAggregate('avg', perUnit: true) - $p->current_price) * $units;
     }
 
     /**

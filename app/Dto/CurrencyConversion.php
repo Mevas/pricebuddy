@@ -51,7 +51,8 @@ final class CurrencyConversion
 
     /**
      * The unit price of a retail price that covers $factor units. The retail price is
-     * converted first, so only amounts a store charges are rounded to cents.
+     * converted first, so only amounts a store charges are rounded to cents. The division
+     * is in floating point, as toSqlPerUnit() does.
      */
     public function convertPerUnit(float $price, float $factor): float
     {
@@ -89,6 +90,21 @@ final class CurrencyConversion
         }
 
         return ["CASE {$storeColumn}".str_repeat($when, count($converted))." ELSE {$priceColumn} END", $bindings];
+    }
+
+    /**
+     * SQL for the unit price of $priceColumn, the same way as convertPerUnit(): converted
+     * as toSql() does, then divided by $factorColumn. The factor column is a double, so the
+     * division is in floating point, which PHP and every database round alike.
+     *
+     * @param  array<int, self>  $byStore  conversions keyed by store ID
+     * @return array{string, array<int, int|string>} the SQL and its bindings
+     */
+    public static function toSqlPerUnit(array $byStore, string $priceColumn, string $storeColumn, string $factorColumn): array
+    {
+        [$price, $bindings] = self::toSql($byStore, $priceColumn, $storeColumn);
+
+        return ["({$price}) / COALESCE(NULLIF({$factorColumn}, 0), 1)", $bindings];
     }
 
     private function rateAsDecimal(): string
