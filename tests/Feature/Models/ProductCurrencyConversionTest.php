@@ -239,6 +239,17 @@ class ProductCurrencyConversionTest extends TestCase
         Queue::assertNotPushed(UpdateExchangeRatesJob::class);
     }
 
+    public function test_switching_a_store_to_the_app_currency_needs_no_rates(): void
+    {
+        Queue::fake();
+
+        Store::query()->where('name', 'eur-store.test')->firstOrFail()
+            ->update(['settings' => ['locale_settings' => ['locale' => 'en', 'currency' => 'RON']]]);
+
+        Queue::assertPushed(RegeneratePriceCache::class);
+        Queue::assertNotPushed(UpdateExchangeRatesJob::class);
+    }
+
     public function test_changing_many_stores_at_once_queues_one_rates_update(): void
     {
         Queue::fake();
