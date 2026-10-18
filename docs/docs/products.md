@@ -18,6 +18,9 @@ URL to get the product details and price. You can then add more URLs to the prod
 
 You can also add a URL to an existing product.
 
+A URL can have its own [additional cost](/stores.html#additional-cost), such as a
+marketplace seller's shipping, which replaces the store's.
+
 ## Unit pricing
 
 When a product comes in different pack sizes, you can add a **Price Factor**
@@ -108,7 +111,8 @@ Notifications require the following settings:
 
 * **Notify price** - The price must be equal or less than this value for the 
   notification to be sent. It is in the default currency; prices from stores in
-  other currencies are converted before they are compared.
+  other currencies are converted before they are compared. Prices include the
+  store's [additional cost](/stores.html#additional-cost), such as shipping.
 * OR **Notify percent** - The price must be this percentage less than the initial
   price for the notification to be sent.
 * **Notify when back in stock** - Get notified when a tracked URL for this product

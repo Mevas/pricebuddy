@@ -243,6 +243,10 @@ store's prices could be converted (rounded to cents). `store_price` is the last 
 the store shows it, in `store_currency`. When no rate is available, `currency` equals
 `store_currency` and the prices are not converted.
 
+`current_price` and each entry's `price`, `unit_price` and `history` include the store's
+additional cost. `additional_cost` is the cost of buying at `store_price`, in `store_currency`,
+or `null` when there is none or it is waived.
+
 ## Client config
 
 `GET /api/client-config`
@@ -315,3 +319,10 @@ Every store in `GET /api/stores` and `GET /api/stores/{id}` carries a `currency`
 
 Both are computed, not columns, so they cannot be named in `fields[stores]`. They are still
 returned correctly when other sparse fieldsets are used.
+
+### Additional cost
+
+`additional_cost` and `additional_cost_free_from` are the store's
+[additional cost](/stores.html#additional-cost) and the price from which it is waived, in the
+store's currency, or `null` for none. Both are returned with the store and can be set with
+`POST /api/stores` and `PUT /api/stores/{id}`. Neither may be negative.
