@@ -57,13 +57,13 @@ class PriceCacheDtoTest extends TestCase
             'locale' => 'en',
             'currency' => 'RON',
             'store_currency' => 'EUR',
-            'exchange_rate' => 5,
+            'store_price' => 25.0,
         ]);
 
         $this->assertTrue($dto->isConverted());
         $this->assertSame('€25.00', $dto->getStorePriceFormatted());
         $this->assertSame('EUR', $dto->toArray()['store_currency']);
-        $this->assertSame(5.0, $dto->toArray()['exchange_rate']);
+        $this->assertSame(25.0, $dto->toArray()['store_price']);
     }
 
     public function test_cache_entries_without_conversion_details_are_not_converted(): void

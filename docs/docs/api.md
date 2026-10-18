@@ -239,9 +239,9 @@ on both. `current_url` is also accepted on `GET /api/products`.
 
 A product's `current_price` is in the app currency. Each `price_cache` entry's `price`,
 `unit_price` and `history` are in that entry's `currency`, which is the app currency when the
-store's prices could be converted. `store_currency` is the store's own currency and
-`exchange_rate` the rate used, so `price / exchange_rate` is the price the store shows. When no
-rate is available, `currency` equals `store_currency` and `exchange_rate` is `1`.
+store's prices could be converted (rounded to cents). `store_price` is the last scraped price as
+the store shows it, in `store_currency`. When no rate is available, `currency` equals
+`store_currency` and the prices are not converted.
 
 ## Client config
 

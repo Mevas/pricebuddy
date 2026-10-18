@@ -26,12 +26,17 @@ class ProductCurrencyConversionTest extends TestCase
 
     const EUR_URL = 'https://eur-store.test/item';
 
+    /**
+     * RON per 1 EUR quoted by the faked rates endpoint. Set it before any price is converted.
+     */
+    protected float $ronPerEuro = 5;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         config()->set('services.exchange_rates.url', 'https://rates.test/latest');
-        Http::fake(['rates.test/*' => Http::response(['base' => 'RON', 'rates' => ['EUR' => 0.2]])]);
+        Http::fake(['rates.test/*' => fn () => Http::response(['base' => 'EUR', 'rates' => ['RON' => $this->ronPerEuro]])]);
         SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'RON']);
 
         $this->makeStore('ron-store.test', 'RON');
@@ -116,6 +121,34 @@ class ProductCurrencyConversionTest extends TestCase
 
         $this->assertTrue($matching->contains($dropped->id));
         $this->assertFalse($matching->contains($risen->id));
+    }
+
+    public function test_an_unchanged_converted_price_behaves_like_an_unchanged_local_price(): void
+    {
+        // 23.51 EUR at 5.0302 is 118.26002 RON: converted prices are rounded to cents, so an
+        // unchanged price is not read as a rise or drop through float noise.
+        $this->ronPerEuro = 5.0302;
+
+        $foreign = $this->makeProduct(ronPrices: [], eurPrices: [23.51, 23.51, 23.51], attrs: ['notify_price' => 118.26, 'notify_percent' => null]);
+        $local = $this->makeProduct(ronPrices: [118.26, 118.26, 118.26], eurPrices: []);
+
+        $this->assertSame(118.26, (float) $foreign->current_price);
+        $this->assertSame($local->trend, $foreign->trend);
+        $this->assertTrue($foreign->is_notified_price);
+        $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($foreign->id));
+    }
+
+    public function test_lowest_price_in_days_sees_a_drop_within_a_day(): void
+    {
+        $product = $this->makeProduct(ronPrices: [], eurPrices: [30]);
+        /** @var Url $url */
+        $url = $product->urls->first();
+
+        // Yesterday's 30 EUR at 06:00 dropped to 25 EUR at 18:00.
+        $url->prices()->create(['price' => 25, 'unit_price' => 25, 'store_id' => $url->store_id, 'created_at' => now()->subDay()->setTime(18, 0)]);
+
+        $this->assertEqualsWithDelta(125.0, $product->refresh()->current_price, 0.001);
+        $this->assertTrue(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
     public function test_store_without_a_currency_uses_the_app_currency(): void

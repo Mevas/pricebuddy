@@ -15,36 +15,44 @@ use Throwable;
  */
 class ExchangeRateService
 {
-    public const string CACHE_KEY_PREFIX = 'exchange_rates.';
+    public const string CACHE_KEY = 'exchange_rates';
+
+    /**
+     * Rates are fetched against one fixed base, the one the ECB publishes in, and any
+     * pair is derived from it, so a change of app currency needs no new lookup.
+     */
+    protected const string BASE = 'EUR';
 
     /**
      * Conversion from $currency into the app currency. The identity when the currencies
-     * match or no rate has ever been fetched, which leaves the amount as scraped.
+     * match or there is no rate for either of them, which leaves the amount as scraped.
      */
     public static function toAppCurrency(string $currency): CurrencyConversion
     {
-        $currency = strtoupper($currency);
-        $appCurrency = strtoupper(CurrencyHelper::getCurrency());
+        $from = strtoupper($currency);
+        $to = strtoupper(CurrencyHelper::getCurrency());
 
-        if ($currency === $appCurrency) {
-            return CurrencyConversion::identity($currency);
+        if ($from === $to) {
+            return CurrencyConversion::identity($from);
         }
 
-        // The endpoint quotes 1 unit of the app currency in each other currency.
-        $quote = (float) (self::ratesAgainst($appCurrency)[$currency] ?? 0);
+        $quotes = self::quotes();
+        $fromQuote = (float) ($quotes[$from] ?? 0);
+        $toQuote = (float) ($quotes[$to] ?? 0);
 
-        return $quote > 0
-            ? new CurrencyConversion($currency, $appCurrency, 1 / $quote)
-            : CurrencyConversion::identity($currency);
+        return $fromQuote > 0 && $toQuote > 0
+            ? new CurrencyConversion($from, $to, $toQuote / $fromQuote)
+            : CurrencyConversion::identity($from);
     }
 
     /**
-     * The last rates fetched against $base, refreshed every 12 hours. A failed refresh
-     * keeps the previous rates and is retried after a few minutes.
+     * Units of each currency per 1 EUR, from the last successful fetch. Refreshed every
+     * 12 hours; a failed refresh keeps the previous quotes and is retried after a few
+     * minutes.
      *
-     * @return array<string, float|int> currency => units per 1 $base
+     * @return array<string, float|int>
      */
-    protected static function ratesAgainst(string $base): array
+    protected static function quotes(): array
     {
         $url = config('services.exchange_rates.url');
 
@@ -54,39 +62,38 @@ class ExchangeRateService
 
         // Memoised per request or queued job, so a long-running worker still sees refreshes.
         $cache = Cache::memo();
-        $key = self::CACHE_KEY_PREFIX.$base;
 
-        /** @var array{rates: array<string, float|int>, refresh_at: int}|null $stored */
-        $stored = $cache->get($key);
+        /** @var array{quotes: array<string, float|int>, refresh_at: int}|null $stored */
+        $stored = $cache->get(self::CACHE_KEY);
 
         if ($stored && $stored['refresh_at'] > now()->getTimestamp()) {
-            return $stored['rates'];
+            return $stored['quotes'];
         }
 
-        $fetched = self::fetchRates($url, $base);
-        $rates = $fetched ?? $stored['rates'] ?? [];
+        $fetched = self::fetchQuotes($url);
+        $quotes = $fetched ?? $stored['quotes'] ?? [];
 
-        $cache->forever($key, [
-            'rates' => $rates,
+        $cache->forever(self::CACHE_KEY, [
+            'quotes' => $quotes,
             'refresh_at' => ($fetched === null ? now()->addMinutes(15) : now()->addHours(12))->getTimestamp(),
         ]);
 
-        return $rates;
+        return $quotes;
     }
 
     /**
      * @return array<string, float|int>|null null when the rates could not be fetched
      */
-    protected static function fetchRates(string $url, string $base): ?array
+    protected static function fetchQuotes(string $url): ?array
     {
         try {
-            $rates = Http::timeout(10)->get($url, ['base' => $base])->throw()->json('rates');
+            $rates = Http::timeout(10)->get($url, ['base' => self::BASE])->throw()->json('rates');
         } catch (Throwable $e) {
-            logger()->warning('Unable to fetch exchange rates: '.$e->getMessage(), ['base' => $base]);
+            logger()->warning('Unable to fetch exchange rates: '.$e->getMessage());
 
             return null;
         }
 
-        return is_array($rates) && $rates !== [] ? $rates : null;
+        return is_array($rates) && $rates !== [] ? [self::BASE => 1] + $rates : null;
     }
 }

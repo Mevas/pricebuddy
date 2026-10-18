@@ -34,22 +34,47 @@ class ExchangeRateServiceTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_converts_into_the_app_currency_using_the_quoted_rate(): void
+    public function test_converts_into_the_app_currency_using_euro_quotes(): void
     {
-        $this->fakeRates(['EUR' => 0.2]);
+        $this->fakeRates(['RON' => 5]);
 
         $conversion = ExchangeRateService::toAppCurrency('EUR');
 
         $this->assertSame('EUR', $conversion->from);
         $this->assertSame('RON', $conversion->to);
-        $this->assertEqualsWithDelta(50.0, $conversion->convert(10), 0.0001);
-        $this->assertEqualsWithDelta(10.0, $conversion->revert(50), 0.0001);
-        Http::assertSent(fn ($request) => $request['base'] === 'RON');
+        $this->assertSame(50.0, $conversion->convert(10));
+        Http::assertSent(fn ($request) => $request['base'] === 'EUR');
+    }
+
+    public function test_converts_between_two_non_euro_currencies(): void
+    {
+        // 1 EUR is 5 RON or 1.25 USD, so 1 USD is 4 RON.
+        $this->fakeRates(['RON' => 5, 'USD' => 1.25]);
+
+        $this->assertSame(40.0, ExchangeRateService::toAppCurrency('USD')->convert(10));
+    }
+
+    public function test_converted_amounts_are_rounded_to_cents(): void
+    {
+        $this->fakeRates(['RON' => 5.0302]);
+
+        $this->assertSame(118.26, ExchangeRateService::toAppCurrency('EUR')->convert(23.51));
+    }
+
+    public function test_changing_the_app_currency_needs_no_new_lookup(): void
+    {
+        $this->fakeRates(['RON' => 5, 'USD' => 1.25]);
+
+        ExchangeRateService::toAppCurrency('EUR');
+        SettingsHelper::setSetting('default_locale_settings', ['locale' => 'en', 'currency' => 'USD']);
+
+        $this->assertSame(12.5, $this->conversionInNewJob()->convert(10));
+        Http::assertSentCount(1);
     }
 
     public function test_rates_are_reused_until_they_are_twelve_hours_old(): void
     {
-        $this->fakeRates(['EUR' => 0.2], ['EUR' => 0.25]);
+        $this->fakeRates(['RON' => 5], ['RON' => 4]);
 
         $this->assertRate(5.0);
         $this->travel(11)->hours();
@@ -63,7 +88,7 @@ class ExchangeRateServiceTest extends TestCase
 
     public function test_a_failed_refresh_keeps_the_last_rates_and_retries_later(): void
     {
-        $this->fakeRates(['EUR' => 0.2], null, ['EUR' => 0.25]);
+        $this->fakeRates(['RON' => 5], null, ['RON' => 4]);
 
         $this->assertRate(5.0);
         $this->travel(13)->hours();
@@ -92,7 +117,7 @@ class ExchangeRateServiceTest extends TestCase
 
     public function test_unknown_currency_is_the_identity_in_the_store_currency(): void
     {
-        $this->fakeRates(['EUR' => 0.2]);
+        $this->fakeRates(['RON' => 5]);
 
         $conversion = ExchangeRateService::toAppCurrency('XYZ');
 
@@ -119,7 +144,7 @@ class ExchangeRateServiceTest extends TestCase
         foreach ($responses as $rates) {
             $rates === null
                 ? $sequence->push('down', 503)
-                : $sequence->push(['base' => 'RON', 'rates' => $rates]);
+                : $sequence->push(['base' => 'EUR', 'rates' => $rates]);
         }
 
         Http::fake([self::RATES_URL.'*' => $sequence]);

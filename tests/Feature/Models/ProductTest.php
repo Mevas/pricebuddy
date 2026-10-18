@@ -209,7 +209,7 @@ class ProductTest extends TestCase
         ], $first['history']);
 
         $this->assertSame('USD', $first['store_currency']);
-        $this->assertSame(1, $first['exchange_rate']);
+        $this->assertSame(5.1, $first['store_price']);
 
         $product->updatePriceCache();
         $this->assertSame($priceCache->toArray(), $product->price_cache);

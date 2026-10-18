@@ -19,17 +19,14 @@ final class CurrencyConversion
         return new self($currency, $currency);
     }
 
+    /**
+     * A converted amount is rounded to cents, like the price aggregates, so a price that
+     * has not changed compares equal wherever it is stored. An amount that is not
+     * converted is returned as scraped.
+     */
     public function convert(float $amount): float
     {
-        return $amount * $this->rate;
-    }
-
-    /**
-     * Turn a converted amount back into the source currency.
-     */
-    public function revert(float $amount): float
-    {
-        return $amount / $this->rate;
+        return $this->isConverted() ? round($amount * $this->rate, 2) : $amount;
     }
 
     public function isConverted(): bool

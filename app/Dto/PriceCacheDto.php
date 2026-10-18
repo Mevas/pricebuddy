@@ -42,7 +42,9 @@ class PriceCacheDto
 
     private StockStatus $stockStatus;
 
-    private CurrencyConversion $conversion;
+    private string $storeCurrency;
+
+    private float $storePrice;
 
     public function __construct(
         float $price,
@@ -60,7 +62,7 @@ class PriceCacheDto
         ?string $unitOfMeasure = self::DEFAULT_UNIT_OF_MEASURE,
         StockStatus|string|null $availability = null,
         ?string $storeCurrency = null,
-        float $exchangeRate = 1,
+        ?float $storePrice = null,
     ) {
         $this->storeId = $storeId;
         $this->storeName = $storeName;
@@ -78,8 +80,8 @@ class PriceCacheDto
         $this->stockStatus = $availability instanceof StockStatus
             ? $availability
             : StockStatus::fromScrapedValue($availability);
-        // Prices are in $currency, converted from the store's own currency at this rate.
-        $this->conversion = new CurrencyConversion($storeCurrency ?? $this->currency, $this->currency, $exchangeRate);
+        $this->storeCurrency = $storeCurrency ?? $this->currency;
+        $this->storePrice = $storePrice ?? $price;
     }
 
     // Getters
@@ -148,7 +150,7 @@ class PriceCacheDto
      */
     public function isConverted(): bool
     {
-        return $this->conversion->isConverted();
+        return $this->storeCurrency !== $this->currency;
     }
 
     /**
@@ -156,7 +158,7 @@ class PriceCacheDto
      */
     public function getStorePriceFormatted(): string
     {
-        return CurrencyHelper::toString($this->conversion->revert($this->getPrice()), locale: $this->locale, iso: $this->conversion->from);
+        return CurrencyHelper::toString($this->storePrice, locale: $this->locale, iso: $this->storeCurrency);
     }
 
     public function getUnitOfMeasure(): string
@@ -288,7 +290,7 @@ class PriceCacheDto
             $data['unit_of_measure'] ?? null,
             $data['availability'] ?? null,
             $data['store_currency'] ?? null,
-            $data['exchange_rate'] ?? 1,
+            $data['store_price'] ?? null,
         );
     }
 
@@ -314,8 +316,8 @@ class PriceCacheDto
             'successful_last_scrape' => $this->isLastScrapeSuccessful(),
             'locale' => $this->locale,
             'currency' => $this->currency,
-            'store_currency' => $this->conversion->from,
-            'exchange_rate' => $this->conversion->rate,
+            'store_currency' => $this->storeCurrency,
+            'store_price' => $this->storePrice,
             'unit_of_measure' => $this->getUnitOfMeasure(),
             'availability' => $this->stockStatus === StockStatus::InStock ? null : $this->stockStatus->value,
         ];
