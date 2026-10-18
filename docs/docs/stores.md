@@ -195,7 +195,8 @@ price with the cost, for example `€23.51 + €8.99 additional cost at the stor
 **Reduced from** - From this price the cost is reduced, like free or cheaper shipping
 over a minimum order. It is checked against the price of one listing, not an order of
 several items. Leave it empty if the cost is never reduced.
-**Reduced cost** - The cost from that price. Leave it empty if it is free.
+**Reduced cost** - The cost from that price, no more than the additional cost. Leave
+it empty if it is free.
 
 For example, a store that charges €8.99 shipping, or €4.99 from €150, has an
 additional cost of `8.99`, reduced from `150` to `4.99`.
@@ -206,15 +207,16 @@ total divided by the factor.
 
 A product URL can have its own additional cost, for example when a marketplace seller
 charges different shipping. It replaces the store's cost, reduction and all. To set it,
-edit the URL on the product page; leave it empty to use the store's cost. Moving the URL
-to another store clears it.
+add or edit the URL on the product page; leave it empty to use the store's cost. Moving
+the URL to another store clears it, unless you set it again in the same edit.
 
 Stores are shared between all users, so a store's cost applies to everyone. Use a
 URL's own cost for a cost that only applies to you.
 
 Costs apply to the whole price history as they are now, so changing one recalculates
 the store's products in the background. If you change a store's currency, its costs keep their amounts,
-like saved prices. Costs are not included when you [share a store](#sharing-a-store).
+like saved prices. Costs are not included when you [share a store](#sharing-a-store), and
+importing a store does not set them.
 
 ## Cookies
 

@@ -326,5 +326,7 @@ returned correctly when other sparse fieldsets are used.
 [additional cost](/stores.html#additional-cost), the price from which it is reduced, and the
 reduced cost, in the store's currency, or `null` for none (a `null` reduced cost is free). They
 are returned with the store, can be named in `fields[stores]`, and can be set with
-`POST /api/stores` and `PUT /api/stores/{id}`. None may be negative, and `additional_cost_reduced_from`
-must be above zero.
+`POST /api/stores` and `PUT /api/stores/{id}`. None may be negative and `additional_cost_reduced_from`
+must be above zero. A reduction needs an `additional_cost`, a reduced cost needs
+`additional_cost_reduced_from`, and it may not be more than `additional_cost`. An update is checked
+against the store's saved values for any of the three it leaves out.
