@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProductResource\Widgets;
 use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Models\Product;
 use App\Models\Url;
+use App\Services\Helpers\CurrencyHelper;
 use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -39,6 +40,13 @@ class UrlsTableWidget extends BaseWidget
                             ->formatStateUsing(fn (string $state): HtmlString => new HtmlString('<a href="'.$state.'" title="'.$state.'" target="_blank">'.Str::limit($state, 80).'</a>')
                             ),
                     ]),
+                    Tables\Columns\TextColumn::make('additional_cost')
+                        ->label('Additional cost')
+                        ->formatStateUsing(fn (float $state, Url $record): string => __('+ :cost', ['cost' => CurrencyHelper::toString($state, locale: $record->store?->locale, iso: $record->store?->currency)]))
+                        ->tooltip(__('This link\'s own additional cost, instead of the store\'s'))
+                        ->grow(false)
+                        ->badge()
+                        ->color('gray'),
                     Tables\Columns\TextColumn::make('price_factor')
                         ->label('Price Factor')
                         ->grow(false)

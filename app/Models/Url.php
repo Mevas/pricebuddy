@@ -58,14 +58,6 @@ class Url extends Model
             $url->url_normalized = static::normalizeForMatch((string) $url->url) ?: null;
         });
 
-        // A link's own cost is what its seller charges, in its store's currency, so it does
-        // not carry over to another store unless it is set again with the move.
-        static::updating(function (Url $url) {
-            if ($url->isDirty('store_id') && ! $url->isDirty('additional_cost')) {
-                $url->additional_cost = null;
-            }
-        });
-
         static::updated(function (Url $url) {
             // Cached product prices include the link's additional cost.
             if ($url->wasChanged('additional_cost')) {
@@ -392,7 +384,9 @@ class Url extends Model
      * history) intact. The store is re-resolved from the new domain and a fresh price is
      * scraped and appended. Fails closed: on an invalid/unresolvable URL the record is
      * left untouched and `false` is returned. $attributes, such as the price factor, are
-     * saved with the new address, so the fresh price is taken with them.
+     * saved with the new address, so the fresh price is taken with them. A link's own cost
+     * is what its seller charges, in its store's currency, so a move to another store drops
+     * it unless $attributes set it.
      *
      * @param  array<string, mixed>  $attributes
      */
@@ -405,7 +399,7 @@ class Url extends Model
         }
 
         if ($newUrl === $this->url) {
-            return true;
+            return $this->update($attributes);
         }
 
         ['store' => $store, 'scrape' => $scrape, 'isUnavailable' => $isUnavailable] = self::scrapeAndResolveStore($newUrl, $createStore);
@@ -414,7 +408,10 @@ class Url extends Model
             return false;
         }
 
+        $movesStore = $store->getKey() !== $this->store_id;
+
         $this->forceFill([
+            ...($movesStore ? ['additional_cost' => null] : []),
             ...$attributes,
             'url' => $newUrl,
             'store_id' => $store->getKey(),

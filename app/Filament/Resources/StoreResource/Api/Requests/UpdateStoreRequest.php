@@ -20,23 +20,23 @@ class UpdateStoreRequest extends FormRequest
     }
 
     /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, ValidationRule|array<mixed>|string>
-     */
-    /**
      * The cost fields are checked together, so the stored ones stand in for any the request
      * leaves out.
      */
     protected function prepareForValidation(): void
     {
-        $store = Store::query()->find($this->route('id'));
+        $store = Store::query()->where('user_id', auth()->id())->find($this->route('id'));
 
         if ($store) {
             $this->mergeIfMissing($store->only(array_keys(CreateStoreRequest::getAdditionalCostRules())));
         }
     }
 
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
     public function rules(): array
     {
         return [

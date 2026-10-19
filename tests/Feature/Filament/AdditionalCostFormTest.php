@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Resources\ProductResource\Pages\CreateProduct;
+use App\Filament\Resources\ProductResource\Pages\ViewProduct;
 use App\Filament\Resources\ProductResource\Widgets\ProductUrlStats;
 use App\Filament\Resources\ProductResource\Widgets\UrlsTableWidget;
 use App\Filament\Resources\StoreResource\Pages\EditStore;
@@ -101,16 +103,52 @@ class AdditionalCostFormTest extends TestCase
         $this->assertNull($url->refresh()->additional_cost);
     }
 
-    public function test_link_form_drops_its_own_cost_when_the_link_moves_to_another_store(): void
+    public function test_link_form_saves_the_cost_as_shown_when_the_link_moves_to_another_store(): void
     {
         $url = $this->makeUrl();
         $url->update(['additional_cost' => 5]);
         Store::factory()->createOne(['domains' => [['domain' => 'example2.com']]]);
 
+        // The form shows the link's cost of 5 and is saved unchanged.
         $this->editUrl($url, ['url' => 'https://example2.com/product', 'additional_cost' => 5])->assertHasNoTableActionErrors();
 
         $this->assertSame('https://example2.com/product', $url->refresh()->url);
-        $this->assertNull($url->additional_cost);
+        $this->assertSame(5.0, $url->additional_cost);
+    }
+
+    public function test_moving_a_link_without_a_cost_drops_its_own_cost(): void
+    {
+        $url = $this->makeUrl();
+        $url->update(['additional_cost' => 5]);
+        Store::factory()->createOne(['domains' => [['domain' => 'example2.com']]]);
+
+        $this->assertTrue($url->changeUrl('https://example2.com/product'));
+        $this->assertNull($url->refresh()->additional_cost);
+
+        // Within the same store the seller, and so the cost, may stay.
+        $url->update(['additional_cost' => 5]);
+        $this->assertTrue($url->changeUrl('https://example2.com/other'));
+        $this->assertSame(5.0, $url->refresh()->additional_cost);
+    }
+
+    public function test_add_url_and_create_product_forms_save_the_link_cost(): void
+    {
+        $url = $this->makeUrl(scrapedPrice: 100);
+
+        Livewire::test(ViewProduct::class, ['record' => $url->product_id])
+            ->callAction('add_url', data: ['url' => 'https://example.com/added', 'price_factor' => 1, 'additional_cost' => 7.5])
+            ->assertHasNoActionErrors();
+        $this->assertSame(7.5, Url::query()->where('url', 'https://example.com/added')->value('additional_cost'));
+
+        Livewire::test(ViewProduct::class, ['record' => $url->product_id])
+            ->callAction('add_url', data: ['url' => 'https://example.com/negative', 'price_factor' => 1, 'additional_cost' => -1])
+            ->assertHasActionErrors(['additional_cost']);
+
+        Livewire::test(CreateProduct::class)
+            ->fillForm(['url' => 'https://example.com/created', 'additional_cost' => 2.5])
+            ->call('create')
+            ->assertHasNoFormErrors();
+        $this->assertSame(2.5, Url::query()->where('url', 'https://example.com/created')->value('additional_cost'));
     }
 
     public function test_product_page_link_form_saves_its_own_additional_cost(): void

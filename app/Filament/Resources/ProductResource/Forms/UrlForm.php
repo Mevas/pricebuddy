@@ -54,8 +54,9 @@ class UrlForm
 
     /**
      * Apply the form to $url in one save, with a new address if it has one, so the fresh
-     * price of a new address is taken with the new factor and cost. A new address that
-     * fails to resolve changes nothing.
+     * price of a new address is taken with the new factor and cost. The cost is saved as the
+     * form shows it, even when the link moves to another store. A new address that fails to
+     * resolve changes nothing.
      *
      * @param  array<string, mixed>  $data
      * @return bool whether the new address resolved
@@ -67,11 +68,7 @@ class UrlForm
             'additional_cost' => self::additionalCost($data['additional_cost'] ?? null),
         ];
 
-        $saved = trim($data['url']) === $url->url
-            ? $url->update($attributes)
-            : $url->changeUrl($data['url'], attributes: $attributes);
-
-        if (! $saved) {
+        if (! $url->changeUrl($data['url'], attributes: $attributes)) {
             return false;
         }
 

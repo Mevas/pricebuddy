@@ -296,17 +296,6 @@ class ProductAdditionalCostTest extends TestCase
         $this->assertFalse(Product::query()->lowestPriceInDays(7)->pluck('id')->contains($product->id));
     }
 
-    public function test_moving_a_link_to_another_store_clears_its_own_cost(): void
-    {
-        $product = $this->makeProduct(ronPrices: [149], eurPrices: []);
-        $url = $product->urls->firstWhere('url', self::RON_URL);
-        $url->update(['additional_cost' => 5]);
-
-        $url->update(['store_id' => $this->store('eur-store.test')->id]);
-
-        $this->assertNull($url->refresh()->additional_cost);
-    }
-
     public function test_notification_target_includes_the_cost(): void
     {
         Notification::fake();

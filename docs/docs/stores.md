@@ -207,8 +207,9 @@ total divided by the factor.
 
 A product URL can have its own additional cost, for example when a marketplace seller
 charges different shipping. It replaces the store's cost, reduction and all. To set it,
-add or edit the URL on the product page; leave it empty to use the store's cost. Moving
-the URL to another store clears it, unless you set it again in the same edit.
+add or edit the URL on the product page; leave it empty to use the store's cost. The
+product page's URL table shows which URLs have their own cost. When you change a URL to
+another store, check its cost in the same form: it is saved as shown.
 
 Stores are shared between all users, so a store's cost applies to everyone. Use a
 URL's own cost for a cost that only applies to you.
