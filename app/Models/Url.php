@@ -384,9 +384,7 @@ class Url extends Model
      * history) intact. The store is re-resolved from the new domain and a fresh price is
      * scraped and appended. Fails closed: on an invalid/unresolvable URL the record is
      * left untouched and `false` is returned. $attributes, such as the price factor, are
-     * saved with the new address, so the fresh price is taken with them. A link's own cost
-     * is what its seller charges, in its store's currency, so a move to another store drops
-     * it unless $attributes set it.
+     * saved with the new address, so the fresh price is taken with them.
      *
      * @param  array<string, mixed>  $attributes
      */
@@ -408,10 +406,7 @@ class Url extends Model
             return false;
         }
 
-        $movesStore = $store->getKey() !== $this->store_id;
-
         $this->forceFill([
-            ...($movesStore ? ['additional_cost' => null] : []),
             ...$attributes,
             'url' => $newUrl,
             'store_id' => $store->getKey(),

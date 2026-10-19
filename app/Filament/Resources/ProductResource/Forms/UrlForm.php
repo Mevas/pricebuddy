@@ -41,7 +41,7 @@ class UrlForm
             ->label(__('Additional cost'))
             ->numeric()
             ->minValue(0)
-            ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping. Leave empty to use the store\'s.'));
+            ->helperText(__('Replaces the store\'s additional cost for this link, for example a marketplace seller\'s shipping, in the store\'s currency. Leave empty to use the store\'s.'));
     }
 
     /**

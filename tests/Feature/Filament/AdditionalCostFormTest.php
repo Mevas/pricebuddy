@@ -114,21 +114,8 @@ class AdditionalCostFormTest extends TestCase
 
         $this->assertSame('https://example2.com/product', $url->refresh()->url);
         $this->assertSame(5.0, $url->additional_cost);
-    }
 
-    public function test_moving_a_link_without_a_cost_drops_its_own_cost(): void
-    {
-        $url = $this->makeUrl();
-        $url->update(['additional_cost' => 5]);
-        Store::factory()->createOne(['domains' => [['domain' => 'example2.com']]]);
-
-        $this->assertTrue($url->changeUrl('https://example2.com/product'));
-        $this->assertNull($url->refresh()->additional_cost);
-
-        // Within the same store the seller, and so the cost, may stay.
-        $url->update(['additional_cost' => 5]);
-        $this->assertTrue($url->changeUrl('https://example2.com/other'));
-        $this->assertSame(5.0, $url->refresh()->additional_cost);
+        Livewire::test(UrlsTableWidget::class, ['record' => $url->product])->assertSee('+ $5.00');
     }
 
     public function test_add_url_and_create_product_forms_save_the_link_cost(): void
