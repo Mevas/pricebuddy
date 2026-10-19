@@ -517,7 +517,7 @@ class ProductTest extends TestCase
         DB::enableQueryLog();
         $this->assertFalse($product->is_notified_price);
 
-        $priceQueries = collect(DB::getQueryLog())->filter(fn (array $query) => str_contains($query['query'], 'from `prices`'));
+        $priceQueries = collect(DB::getQueryLog())->filter(fn (array $query) => preg_match('/from [`"]prices[`"]/', $query['query']) === 1);
         $this->assertCount(1, $priceQueries);
     }
 

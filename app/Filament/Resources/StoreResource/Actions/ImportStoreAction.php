@@ -5,10 +5,12 @@ namespace App\Filament\Resources\StoreResource\Actions;
 use App\Actions\CreateStoreAction;
 use App\Enums\Icons;
 use App\Filament\Resources\StoreResource;
+use App\Models\Store;
 use App\Rules\ImportStore;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Illuminate\Support\Arr;
 
 class ImportStoreAction extends Action
 {
@@ -47,7 +49,7 @@ class ImportStoreAction extends Action
         $this->keyBindings(['mod+i']);
 
         $this->action(function (array $data): void {
-            $attributes = json_decode(data_get($data, 'json'), true);
+            $attributes = Arr::only(json_decode(data_get($data, 'json'), true), Store::SHAREABLE);
             $editAfterSave = data_get($data, 'edit_after_save', false);
 
             if ($store = (new CreateStoreAction)($attributes)) {

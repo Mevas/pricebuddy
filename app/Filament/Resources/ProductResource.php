@@ -9,6 +9,7 @@ use App\Filament\Resources\ProductResource\Actions\PauseBulkAction;
 use App\Filament\Resources\ProductResource\Actions\ResumeBulkAction;
 use App\Filament\Resources\ProductResource\Api\Transformers\ProductTransformer;
 use App\Filament\Resources\ProductResource\Columns\ProductCardColumn;
+use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Models\Tag;
@@ -106,7 +107,9 @@ class ProductResource extends Resource
             ->numeric()
             ->default(1)
             ->minValue(0.01)
-            ->helperText(__('Number of items (unit price = price / factor)'));
+            ->helperText(__('Number of items (unit price = (price + additional cost) / factor)'));
+
+        $components[] = UrlForm::additionalCostInput();
 
         $components[] = Forms\Components\Toggle::make('create_store')
             ->label('Create store if it doesn\'t exist')

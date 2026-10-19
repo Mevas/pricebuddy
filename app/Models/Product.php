@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Casts\ExactFloat;
-use App\Dto\CurrencyConversion;
+use App\Dto\ListingPricing;
 use App\Dto\PriceCacheDto;
 use App\Enums\Statuses;
 use App\Enums\StockStatus;
@@ -315,27 +315,23 @@ class Product extends Model
     }
 
     /**
-     * Scope the lowest price in days. current_price is a unit price, so prices are compared
-     * per unit too. Prices from stores in another currency are converted in SQL with the
-     * stored rates and the same rounding as the price cache, which is rebuilt when the
-     * rates change.
+     * Scope the lowest price in days. current_price is a unit price with the additional
+     * cost, so prices are compared the same way. Prices from stores in another currency are
+     * converted in SQL with the stored rates and the same rounding as the price cache, which
+     * is rebuilt when the rates or costs change.
      */
     public function scopeLowestPriceInDays(EloquentBuilder $query, int $days = 7): EloquentBuilder
     {
-        [$unitPrice, $bindings] = CurrencyConversion::toSqlPerUnit(
-            Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all(),
-            'prices.price',
-            'urls.store_id',
-            'prices.price_factor',
-        );
+        $conversions = Store::all()->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()])->all();
 
-        return $query->whereHas('prices', function ($priceQuery) use ($days, $unitPrice, $bindings) {
+        return $query->whereHas('prices', fn (EloquentBuilder $priceQuery) => ListingPricing::whereUnitTotalAbove(
             $priceQuery
                 ->where('prices.created_at', '>=', Carbon::now()->subDays($days)->startOfDay())
                 ->where('prices.created_at', '<', Carbon::now()->startOfDay())
-                ->where('prices.price', '>', 0)
-                ->whereRaw("current_price < {$unitPrice}", $bindings);
-        });
+                ->where('prices.price', '>', 0),
+            'products.current_price',
+            $conversions,
+        ));
     }
 
     /***************************************************
@@ -634,7 +630,7 @@ class Product extends Model
                 $urlHistory = $history->get($url->getKey(), collect());
                 /** @var Store $store */
                 $store = $url->store;
-                $conversion = $store->currencyConversion();
+                $pricing = ListingPricing::forUrl($url);
 
                 // Get last scraped price.
                 /** @var ?Price $lastScrapedPrice */
@@ -660,17 +656,19 @@ class Product extends Model
                     'trend' => $trend,
                     'price' => $latestPrice,
                     'unit_price' => $lastScrapedPrice
-                        ? $conversion->convertPerUnit((float) $lastScrapedPrice->price, (float) $lastScrapedPrice->price_factor)
+                        ? $pricing->total((float) $lastScrapedPrice->price, (float) $lastScrapedPrice->price_factor)
                         : $latestPrice,
                     'price_factor' => ($f = $url->price_factor ?: 1) == (int) $f ? (int) $f : $f,
                     'history' => $urlHistory->toArray(),
                     'last_scrape' => $lastScrapedTimestamp?->toDateTimeString(),
                     'locale' => $store->locale,
-                    // Prices above are in this currency; the price as the store shows it is
+                    // Prices above are in this currency and include the additional cost; the
+                    // price as the store shows it and that cost, null when there is none, are
                     // kept too, in the store's own currency.
-                    'currency' => $conversion->to,
-                    'store_currency' => $conversion->from,
+                    'currency' => $pricing->conversion->to,
+                    'store_currency' => $pricing->conversion->from,
                     'store_price' => $lastScrapedPrice->price ?? 0,
+                    'additional_cost' => $pricing->costAt((float) ($lastScrapedPrice->price ?? 0)) ?: null,
                     'unit_of_measure' => $this->unit_of_measure,
                     'availability' => $url->getAvailabilityStatus()?->value,
                 ];
@@ -801,24 +799,23 @@ class Product extends Model
             ->orderBy('prices.created_at')
             ->get();
 
-        // History is expressed in the app currency so prices from every store compare.
-        $conversions = Store::query()
-            ->whereIn('id', $prices->pluck('store_id')->unique())
-            ->get()
-            ->mapWithKeys(fn (Store $store) => [$store->getKey() => $store->currencyConversion()]);
+        // History is what buying cost in the app currency, so prices from every store compare.
+        /** @var EloquentCollection<int, Url> $urls */
+        $urls = $this->urls()->with('store')->whereIn('id', $prices->pluck('url_id')->unique())->get();
+        $pricings = $urls->mapWithKeys(fn (Url $url) => [$url->getKey() => ListingPricing::forUrl($url)]);
 
         return $prices
             ->groupBy('url_id')
-            ->mapWithKeys(function ($prices, int $urlId) use ($perUnit, $conversions) {
-                /** @var CurrencyConversion $conversion */
-                $conversion = $conversions->get($prices->first()->store_id) ?? CurrencyConversion::identity(CurrencyHelper::getCurrency());
+            ->mapWithKeys(function ($prices, int $urlId) use ($perUnit, $pricings) {
+                /** @var ListingPricing $pricing */
+                $pricing = $pricings->get($urlId);
 
                 // All price entries for the store.
                 $storeHistory = $prices->sortBy('created_at')
                     ->groupBy('created_at')
                     ->mapWithKeys(fn ($prices, string $date) => [
                         Carbon::parse($date)->toDateString() => $prices
-                            ->map(fn ($price): float => $conversion->convertPerUnit((float) $price->price, $perUnit ? (float) $price->price_factor : 1))
+                            ->map(fn ($price): float => $pricing->total((float) $price->price, $perUnit ? (float) $price->price_factor : 1))
                             ->min(),
                     ]);
 
@@ -870,7 +867,7 @@ class Product extends Model
             // Get first price.
             /** @var ?Price $firstPriceModel */
             $firstPriceModel = $this->prices()->with('url.store')->oldest('prices.created_at')->first();
-            $firstPrice = $firstPriceModel?->convertedPrice();
+            $firstPrice = $firstPriceModel?->totalPrice();
 
             // No first price, can't calculate percent.
             if (is_null($firstPrice)) {

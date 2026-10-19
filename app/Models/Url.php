@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Dto\ListingPricing;
 use App\Enums\StockStatus;
 use App\Events\AvailabilityChangedEvent;
+use App\Jobs\RegeneratePriceCache;
 use App\Services\AiConfigHealer;
 use App\Services\AiScrapeEnhancer;
 use App\Services\AutoCreateStore;
@@ -29,6 +31,7 @@ use Illuminate\Support\Uri;
  * @property ?string $url
  * @property ?string $url_normalized
  * @property float $price_factor
+ * @property ?float $additional_cost
  * @property string $product_name_short
  * @property string $store_name
  * @property string $buy_url
@@ -55,6 +58,13 @@ class Url extends Model
             $url->url_normalized = static::normalizeForMatch((string) $url->url) ?: null;
         });
 
+        static::updated(function (Url $url) {
+            // Cached product prices include the link's additional cost.
+            if ($url->wasChanged('additional_cost')) {
+                RegeneratePriceCache::dispatch([$url->product_id]);
+            }
+        });
+
         static::deleted(function (Url $url) {
             $url->prices()->delete();
             $url->product->updatePriceCache();
@@ -69,6 +79,7 @@ class Url extends Model
             'updated_at' => 'datetime',
             'created_at' => 'datetime',
             'availability' => StockStatus::class,
+            'additional_cost' => 'float',
         ];
     }
 
@@ -128,14 +139,21 @@ class Url extends Model
         );
     }
 
+    /**
+     * The latest price as the store shows it, with the additional cost of buying at it.
+     */
     protected function latestPriceFormatted(): Attribute
     {
         return Attribute::make(
-            get: fn () => CurrencyHelper::toString(
-                $this->latestPrice()->first()->price ?? 0,
-                locale: $this->store?->locale,
-                iso: $this->store?->currency
-            )
+            get: function (): string {
+                $price = (float) ($this->latestPrice()->first()->price ?? 0);
+                $cost = ListingPricing::forUrl($this)->costAt($price);
+                $format = fn (float $amount): string => CurrencyHelper::toString($amount, locale: $this->store?->locale, iso: $this->store?->currency);
+
+                return $cost > 0
+                    ? __(':price + :cost additional cost', ['price' => $format($price), 'cost' => $format($cost)])
+                    : $format($price);
+            }
         );
     }
 
@@ -322,7 +340,7 @@ class Url extends Model
         return null;
     }
 
-    public static function createFromUrl(string $url, ?int $productId = null, ?int $userId = null, bool $createStore = true, float $priceFactor = 1): Url|false
+    public static function createFromUrl(string $url, ?int $productId = null, ?int $userId = null, bool $createStore = true, float $priceFactor = 1, ?float $additionalCost = null): Url|false
     {
         $userId = $userId ?? auth()->id();
 
@@ -353,6 +371,7 @@ class Url extends Model
             'store_id' => $store->getKey(),
             'product_id' => $productId,
             'price_factor' => $priceFactor,
+            'additional_cost' => $additionalCost,
         ]);
 
         $urlModel->updatePrice(data_get($scrape, 'price'), $scrape);
@@ -364,9 +383,12 @@ class Url extends Model
      * Re-point this URL to a new address, keeping the record (and therefore its price
      * history) intact. The store is re-resolved from the new domain and a fresh price is
      * scraped and appended. Fails closed: on an invalid/unresolvable URL the record is
-     * left untouched and `false` is returned.
+     * left untouched and `false` is returned. $attributes, such as the price factor, are
+     * saved with the new address, so the fresh price is taken with them.
+     *
+     * @param  array<string, mixed>  $attributes
      */
-    public function changeUrl(string $newUrl, bool $createStore = true): bool
+    public function changeUrl(string $newUrl, bool $createStore = true, array $attributes = []): bool
     {
         $newUrl = trim($newUrl);
 
@@ -375,7 +397,7 @@ class Url extends Model
         }
 
         if ($newUrl === $this->url) {
-            return true;
+            return $this->update($attributes);
         }
 
         ['store' => $store, 'scrape' => $scrape, 'isUnavailable' => $isUnavailable] = self::scrapeAndResolveStore($newUrl, $createStore);
@@ -385,6 +407,7 @@ class Url extends Model
         }
 
         $this->forceFill([
+            ...$attributes,
             'url' => $newUrl,
             'store_id' => $store->getKey(),
         ])->save();

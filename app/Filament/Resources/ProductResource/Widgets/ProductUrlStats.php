@@ -3,14 +3,13 @@
 namespace App\Filament\Resources\ProductResource\Widgets;
 
 use App\Dto\PriceCacheDto;
+use App\Filament\Resources\ProductResource\Forms\UrlForm;
 use App\Models\Product;
 use App\Models\Url;
-use App\Rules\StoreUrl;
 use Exception;
 use Filament\Actions\Action;
 use Filament\Actions\Concerns\InteractsWithActions;
 use Filament\Actions\Contracts\HasActions;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
@@ -109,30 +108,12 @@ class ProductUrlStats extends BaseWidget implements HasActions, HasForms
             ->color('gray')
             ->icon('heroicon-o-pencil-square')
             ->outlined(false)
-            ->fillForm(function ($arguments) {
-                $url = Url::find($arguments['url']);
-
-                return [
-                    'url' => $url->url,
-                    'price_factor' => $url->price_factor,
-                ];
-            })
-            ->form([
-                TextInput::make('url')
-                    ->label('URL')
-                    ->required()
-                    ->rules([new StoreUrl]),
-                TextInput::make('price_factor')
-                    ->label('Price Factor')
-                    ->numeric()
-                    ->default(1)
-                    ->minValue(0.01)
-                    ->required(),
-            ])
+            ->fillForm(fn (array $arguments): array => Url::findOrFail($arguments['url'])->only(['url', 'price_factor', 'additional_cost']))
+            ->form(fn (array $arguments): array => UrlForm::schema(Url::findOrFail($arguments['url'])))
             ->action(function ($arguments, $data) {
-                $url = Url::find($arguments['url']);
+                $url = Url::findOrFail($arguments['url']);
 
-                if (trim($data['url']) !== $url->url && ! $url->changeUrl($data['url'])) {
+                if (! UrlForm::save($url, $data)) {
                     Notification::make('url_update_failed')
                         ->title('Unable to resolve a store or price for this URL')
                         ->danger()
@@ -140,10 +121,6 @@ class ProductUrlStats extends BaseWidget implements HasActions, HasForms
 
                     return;
                 }
-
-                $url->update(['price_factor' => $data['price_factor']]);
-                $url->syncStoredPricesForCurrentFactor();
-                $url->product->updatePriceCache();
 
                 Notification::make('url_updated')
                     ->title('URL updated')

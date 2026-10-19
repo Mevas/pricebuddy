@@ -142,6 +142,33 @@ class StoreResource extends Resource
                     ->columns(2)
                     ->schema(AppSettingsPage::getLocaleFormFields('settings.locale_settings')),
 
+                Section::make('Additional cost')
+                    ->description(__('What buying from this store costs on top of the price, such as shipping, in the store\'s currency. It is added to every price at this store before prices are compared.'))
+                    ->columns(3)
+                    ->schema([
+                        TextInput::make('additional_cost')
+                            ->label('Additional cost')
+                            ->numeric()
+                            ->minValue(0)
+                            ->requiredWith('additional_cost_reduced_from')
+                            ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
+                            ->hintIcon(Icons::Help->value, 'For example shipping or a payment fee. Leave empty if there is none. A product link can set its own cost instead'),
+                        TextInput::make('additional_cost_reduced_from')
+                            ->label('Reduced from')
+                            ->numeric()
+                            ->rule('gt:0')
+                            ->requiredWith('additional_cost_reduced')
+                            ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
+                            ->hintIcon(Icons::Help->value, 'From this price the cost is reduced, like free or cheaper shipping over a minimum order. Leave empty if it never is'),
+                        TextInput::make('additional_cost_reduced')
+                            ->label('Reduced cost')
+                            ->numeric()
+                            ->minValue(0)
+                            ->lte('additional_cost')
+                            ->prefix(fn (Get $get): ?string => $get('settings.locale_settings.currency'))
+                            ->hintIcon(Icons::Help->value, 'The cost from that price. Leave empty if it is free'),
+                    ]),
+
                 Section::make('Cookies')->schema([
                     TextInput::make('cookies')
                         ->label('Cookies')
@@ -330,7 +357,7 @@ class StoreResource extends Resource
         return BulkAction::make('setLocale')
             ->label('Set locale and currency')
             ->icon('heroicon-o-currency-dollar')
-            ->modalDescription('The locale controls how prices are read from the page. The currency is the currency of the store\'s prices, including prices that are already saved: they keep their numbers and are relabelled, not converted. Products convert each store\'s prices into the default currency to compare them.')
+            ->modalDescription('The locale controls how prices are read from the page. The currency is the currency of the store\'s prices, including prices that are already saved: they keep their numbers and are relabelled, not converted. So do additional costs. Products convert each store\'s prices into the default currency to compare them.')
             ->form(AppSettingsPage::getLocaleFormFields('locale_settings'))
             ->action(function (Collection $records, array $data): void {
                 foreach ($records as $store) {

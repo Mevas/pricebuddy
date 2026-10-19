@@ -58,9 +58,9 @@
                             <x-price-factor-price :cache="$latestPrice" />
                         </span>
                     @endif
-                    @if ($latestPrice?->hasVisiblePrice() && $latestPrice->isConverted())
+                    @if ($latestPrice?->hasVisiblePrice() && $latestPrice->differsFromStorePrice())
                         <span class="text-xs text-gray-500 dark:text-gray-400 block mb-2 mt-1">
-                            <x-store-currency-price :cache="$latestPrice" />
+                            <x-store-price :cache="$latestPrice" />
                         </span>
                     @endif
                     <div class="pb-card-badges block mb-2">

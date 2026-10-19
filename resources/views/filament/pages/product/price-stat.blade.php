@@ -110,9 +110,9 @@
         </div>
     @endif
 
-    @if ($priceCache->hasVisiblePrice() && $priceCache->isConverted())
+    @if ($priceCache->hasVisiblePrice() && $priceCache->differsFromStorePrice())
         <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-2">
-            <x-store-currency-price :cache="$priceCache" />
+            <x-store-price :cache="$priceCache" />
         </div>
     @endif
 

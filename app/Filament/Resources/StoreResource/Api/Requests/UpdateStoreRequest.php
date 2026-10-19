@@ -4,6 +4,7 @@ namespace App\Filament\Resources\StoreResource\Api\Requests;
 
 use App\Enums\ScraperService;
 use App\Enums\ScraperStrategyType;
+use App\Models\Store;
 use App\Rules\ScrapeStrategyValue;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -16,6 +17,19 @@ class UpdateStoreRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * The cost fields are checked together, so the stored ones stand in for any the request
+     * leaves out.
+     */
+    protected function prepareForValidation(): void
+    {
+        $store = Store::query()->where('user_id', auth()->id())->find($this->route('id'));
+
+        if ($store) {
+            $this->mergeIfMissing($store->only(array_keys(CreateStoreRequest::getAdditionalCostRules())));
+        }
     }
 
     /**
@@ -48,6 +62,7 @@ class UpdateStoreRequest extends FormRequest
             'scrape_strategy.title.value' => [new ScrapeStrategyValue],
             'notes' => 'sometimes|string',
             'user_id' => 'sometimes|exists:users,id|in:'.auth()->id(),
+            ...CreateStoreRequest::getAdditionalCostRules(),
         ];
     }
 }

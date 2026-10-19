@@ -45,6 +45,9 @@ use Spatie\Sluggable\SlugOptions;
  * @property Collection $products
  * @property ?User $user
  * @property ?string $cookies
+ * @property ?float $additional_cost
+ * @property ?float $additional_cost_reduced_from
+ * @property ?float $additional_cost_reduced
  */
 class Store extends Model
 {
@@ -52,6 +55,12 @@ class Store extends Model
     use HasFactory;
 
     use HasSlug;
+
+    /**
+     * What sharing a store exports and importing one takes: how to scrape it, not what one
+     * instance has set for itself, such as its owner, cookies or additional cost.
+     */
+    public const array SHAREABLE = ['name', 'slug', 'domains', 'scrape_strategy', 'settings'];
 
     protected $fillable = [
         'name',
@@ -62,6 +71,9 @@ class Store extends Model
         'notes',
         'user_id',
         'cookies',
+        'additional_cost',
+        'additional_cost_reduced_from',
+        'additional_cost_reduced',
     ];
 
     protected function casts(): array
@@ -70,6 +82,9 @@ class Store extends Model
             'domains' => 'array',
             'scrape_strategy' => StoreScraperStrategySetCast::class,
             'settings' => 'array',
+            'additional_cost' => 'float',
+            'additional_cost_reduced_from' => 'float',
+            'additional_cost_reduced' => 'float',
         ];
     }
 
@@ -101,13 +116,13 @@ class Store extends Model
         });
 
         static::updated(function (Store $store) {
-            // Cached product prices are converted from the store currency, so they are
-            // stale as soon as it changes.
-            if ($store->currencyWasChanged()) {
-                if (! $store->usesAppCurrency()) {
-                    UpdateExchangeRates::dispatch();
-                }
+            if ($store->currencyWasChanged() && ! $store->usesAppCurrency()) {
+                UpdateExchangeRates::dispatch();
+            }
 
+            // Cached product prices include the store's additional cost and are converted
+            // from its currency, so they are stale as soon as either changes.
+            if ($store->currencyWasChanged() || $store->wasChanged(['additional_cost', 'additional_cost_reduced_from', 'additional_cost_reduced'])) {
                 RegeneratePriceCache::dispatch($store->products()->pluck('products.id')->unique()->values()->all());
             }
         });
